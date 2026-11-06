@@ -1,0 +1,12 @@
+/data.json
+/data/*
+!/data/.gitkeep
+/.tools/
+/node_modules/
+.env
+.env.*
+server.cfg
+*.log
+*.bak
+.vscode/
+.idea/
