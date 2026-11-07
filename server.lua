@@ -363,7 +363,7 @@ RegisterCommand('ospermisos',function(src)
   out(src,('Sesion %d | identidad %s | ACE osdev.admin=%s | ACE general command=%s'):format(src,OSDevtools.AuthIdentity.mask(principal),tostring(ace==true or ace==1),tostring(general==true or general==1)))
   out(src,('txAdmin compatible=%s | autenticado=%s | perfil temporal=%s | almacenamiento=%s | personaje=%s'):format(tostring(tx.txCompatible),tostring(tx.authenticated),tx.profile or 'ninguno',tostring(ready),tostring(characterFor(src) or 'no disponible')))
   local scopes={}
-  for _,scope in ipairs({'osdev.admin','osdev.economy','osdev.jobs','osdev.assets','osdev.inspect'}) do
+  for _,scope in ipairs({'osdev.admin','osdev.economy','osdev.jobs','osdev.assets','osdev.inspect','ossecurity.admin','osinventory.admin'}) do
     local allowed,provider=OSDevtools.AuthHub.can(src,scope)
     scopes[#scopes+1]=scope..'='..tostring(allowed)..' ('..provider..')'
   end

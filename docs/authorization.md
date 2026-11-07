@@ -57,18 +57,18 @@ ya controla el servidor. El servicio no puede inferir los roles definidos en el 
 
 | Perfil | Permisos |
 | --- | --- |
-| `oscar_admin` | Administración de Devtools y Security, solo mediante asignación explícita. No incluye Inventory. |
+| `oscar_admin` | Administración de Devtools, Security e Inventory, solo mediante asignación explícita. |
 | `finance` | `osdev.economy`: setmoney, givemoney, removemoney. |
 | `jobs` | `osdev.jobs`: setjob, setduty. |
 | `assets` | `osdev.assets` y `osdev.inspect`: crear/asignar bienes, vehículos, aspecto, setspawn y consultas. |
 | `observer` | `osdev.inspect`: consultas administrativas; sin mutaciones. |
 | `devtools_admin` | `osdev.admin`: administración general de Devtools. |
 | `security_admin` | `ossecurity.admin`: contrato administrativo existente de OS Security. |
+| `inventory_admin` | `osinventory.admin`: giveitem, removeitem, inspectinventory. |
 
 Un perfil nuevo sustituye al anterior; no acumula capacidades. Duración de 1 a
 60 minutos, limitada además por la prueba de autenticación, que caduca a los 15
-minutos. No se renueva automáticamente por usar comandos. No hay perfil Inventory:
-el recurso aún no está implementado y su contrato no se ha verificado.
+minutos. No se renueva automáticamente por usar comandos.
 
 ## Revocación y límites
 
@@ -127,8 +127,11 @@ para funcionar con ACE; `AdminAuthorizationResource=false` desactiva el adaptado
 No concede ítems, `ossecurity.g6.operations`, perfiles G6, propiedad de dispositivos
 ni vídeo remoto. Las validaciones existentes permanecen vigentes.
 
-OS Inventory no existe en este workspace. No se modifica ni se habilita un consumidor
-ficticio: deberá verificarse el contrato real al implementar el recurso.
+En la revisión final apareció una implementación `os_inventory 0.1.0-pretest`.
+Se verificaron su manifiesto y `server/main.lua`: giveitem, removeitem e
+inspectinventory comparten `osinventory.admin`. Solo después se añadió su consumidor
+y un adaptador opcional para ese contrato exacto. No se modificaron identidades,
+objetos, persistencia, NUI ni APIs RP. Esto no completa la fase general del inventario.
 
 Proveedores externos están deshabilitados por defecto. Tras configurar el nombre
 exacto del recurso y sus permisos en `ExternalProviders`, ese recurso puede registrar:
@@ -173,8 +176,9 @@ desarrollo no sustituyen al RapidJSON nativo.
 
 Comprobación manual en el servidor local respaldado:
 
-1. Iniciar Devtools antes de autenticar al personal; después Security si se usa
-   su adaptador. No se modifica la configuración del servidor automáticamente.
+1. Iniciar Devtools antes de autenticar al personal; después Inventory y Security
+   si se usan sus adaptadores. Si ya están iniciados, reiniciarlos manualmente
+   en ese orden para cargar el código nuevo. No se cambia server.cfg.
 2. Conectar propietario, segundo administrador, moderador y jugador normal.
    Autenticar personal mediante `/tx` y revisar `/ospermisos`.
 3. Asignar desde Live Console `finance` al segundo y `observer` al moderador.
@@ -186,6 +190,9 @@ Comprobación manual en el servidor local respaldado:
 6. Reconectar y reiniciar el servidor: no recuperar delegaciones temporales.
 7. Asignar `security_admin`, comprobar `osdev list`/`osmaint`, revocar y comprobar
    denegación. No debe abrir una tablet sin su ítem y autorización G6.
+   Probar `inventory_admin` con giveitem/removeitem/inspectinventory, revocar y
+   comprobar denegación. El perfil nuevo sustituye al anterior; `oscar_admin`
+   permite probar los tres dominios cuando se haya aprobado expresamente.
 8. Probar un ACE independiente: debe conservarse tras revocar la delegación;
    retirarlo por su propia vía si se quiere revocación total.
 
