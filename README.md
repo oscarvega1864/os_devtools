@@ -1,94 +1,107 @@
-# OS Devtools 0.1.3-pretest.1 — Autorización OSCAR
+# OS Devtools 0.1.3
 
-Recurso standalone orientado al FXServer local. **No instalar en servidores públicos o de producción**: es un banco de pruebas, no un framework RP ni una economía transaccional de producción. No incluye inventario.
+Herramientas standalone para GTA V Legacy / FXServer local: identidad, economía de pruebas, empleos, activos, HUD, posiciones y respawn. No necesita frameworks ni inventario. La autorización OSCAR del hotfix se conserva: ser administrador txAdmin no concede automáticamente permisos ACE.
 
-Se conserva la implementación `0.1.3-pretest` existente, incluida su identidad
-automática, HUD y posiciones. `/setpj` sigue retirado. La capa común de autorización
-admite ACE y delegaciones temporales explícitas sobre autenticación observada de
-txAdmin. OS Security dispone de un adaptador opcional tras verificar su contrato.
-Consultar [investigación, permisos y validación](docs/authorization.md).
+## Identidad y destinatarios
 
-## Instalación
-1. Copia la carpeta `os_devtools` a `resources/[local]/os_devtools`.
-2. Para la vía ACE, la configuración tradicional es (no se modifica automáticamente):
-   ```cfg
-   add_ace group.admin osdev.admin allow
-   ensure os_devtools
-   ```
-3. Alternativa sin altas individuales en `server.cfg`: autenticar al empleado en el menú de txAdmin y, desde su consola administrativa, ejecutar `osautorizar <id> <perfil> <minutos> CONFIRMAR`. La asignación es explícita porque txAdmin 8.1.2 no expone un export público de permisos granulares. El mero estado de administrador no concede acceso global.
-4. Conecta dos jugadores si quieres probar `/pagar` o `/ceder` entre personas.
-5. Se conserva el almacenamiento pretest en `data.json` y `data_backup.json`. La capa de autorización no migra esos archivos; sus delegaciones viven solo en RAM. **No editar datos en marcha ni mezclarlos con snapshots de prototipos anteriores.**
+Se distinguen conexión temporal, cuenta nativa verificada, ID persistente `oschar_0000000001` y alias único. El ID del personaje no cambia al reconectar con otro server ID. Se conservan los alias y las titularidades existentes. El HUD muestra ID de conexión y efectivo del personaje activo; `/hud` conserva su preferencia mediante KVP.
 
-## Identidad
-- Se mantiene la identidad automática pretest por `license` y las vinculaciones anteriores, incluido `oscar_vega`. La identidad de autorización es nativa y no depende del alias RP.
-- `/ospermisos` muestra diagnóstico propio y enmascarado. `osrevocar <id>` revoca una delegación, desde consola u `oscar.auth.manage`.
-- `/setjob oscar_vega gruppe6 vigilante`
-- `/setduty oscar_vega on`
-- `/dinero`: muestra **dinero en mano** y **banco**.
-- `/misbienes` o `/mispropiedades`: muestra dinero y todo lo propio.
-- `/verpropiedades oscar_vega`: consulta administrativa de otro personaje.
+La identidad inicial es automática. **`/setpj` permanece retirado por la instrucción posterior de identidad automática**; `/setuser` conserva únicamente el aviso informativo. La gestión explícita usa estos comandos:
 
-## Economía
-- `/setmoney oscar_vega 1000 cash`
-- `/setmoney oscar_vega 5000 bank`
-- `/givemoney oscar_vega 100 cash`
-- `/removemoney oscar_vega 20 cash`
-- `/pagar 2 50`: paga 50 $ **en efectivo** al personaje activo del jugador 2.
-- `/pagar oscar_vega 50`: también admite alias del personaje, incluso desconectado.
-- No se permite transferir a uno mismo, saldos negativos ni pagos sin fondos.
+| Comando | Acceso y efecto |
+| --- | --- |
+| `/personaje` | Personal: lista personajes propios y sus IDs. |
+| `/personaje <alias\|char:ID>` | Selecciona un personaje de la misma cuenta; guarda primero la posición anterior. |
+| `/crearpersonaje <idJugador> <alias>` | `osdev.identity`: crea un personaje para esa cuenta; no sustituye al activo si ya existe. |
+| `/seleccionarpersonaje <idJugador> <alias\|char:ID>` | `osdev.identity`: selecciona un personaje ya perteneciente a la cuenta. |
+| `/vincularpersonaje <idJugador> <alias\|char:ID> CONFIRMAR` | `osdev.identity`: vincula un personaje heredado sin propietario; registra la intervención. No reasigna personajes de otra cuenta. |
 
-## Activos
-- `/crearpropiedad 200 casa Villa_Mirror 50000` crea en tu posición y **rechaza ID repetido**.
-- `/crearnegocio ltd mirror oscar_vega 30$` crea negocio con ID secuencial.
-- `/setpropiedad 200 oscar_vega`
-- `/setnegocio 1 oscar_vega`
-- `/crearvehiculo sultan 0 111 fijo oscar_vega`
-- `/crearvehiculo sultan 0` crea uno temporal.
-- `/setvehiculo 1 oscar_vega`
-- `/recuperarvehiculo 1` genera una copia física del registro si no se conoce entidad existente. Los vehículos fijos persisten **como registro**, no reaparecen automáticamente tras reiniciar.
-- `/ceder 2`: **cede el vehículo registrado en el que estás como conductor**, al personaje del jugador 2. No cede automáticamente dinero, propiedades o negocios.
-- `/setcolor 0 111`, `/listliveries`, `/setlivery 0 native`, `/setlivery 0 mod48` (solo estando al volante, guardado únicamente en vehículos registrados).
-- `/listvehiculos`, `/listnegocios`, `/listpropiedades`.
-- `/infovehiculo 1`, `/infonegocio 1`, `/infopropiedad 200`.
+Un personaje heredado sin cuenta no se entrega al primero que conecte. Se bloquea la creación automática de identidades nuevas mientras queden personajes heredados sin vincular, para evitar inventarios vacíos sustitutos. Revisar su propietario y vincular explícitamente, o crear de forma administrativa un personaje nuevo. Una asociación a otra cuenta exige una migración auditada específica; no hay comando de apropiación.
 
-## Alcance y limitaciones
-- Los comandos administrativos usan permisos efectivos por operación: economía, empleos, activos o consultas. `osdev.admin` conserva acceso general a Devtools. `/pagar`, `/ceder`, `/dinero`, `/misbienes` y `/mispropiedades` siguen siendo personales.
-- Los precios de propiedades y negocios son metadatos; `/setpropiedad`, `/setnegocio` y `/setvehiculo` **asignan gratis** y no cobran.
-- Esta primera edición presenta listados en el chat, no NUI visual.
-- El sistema guarda un único JSON con escritura de recurso. Para alta concurrencia, compras con inventario, transacciones entre recursos o producción se necesita una base de datos con transacciones atómicas; **no usar este ejemplo como economía de producción**.
-- Los vehículos los genera el cliente autorizado. Si tienes `sv_entityLockdown strict`, puede que no se creen: se necesita un adaptador de spawn autorizado desde servidor. Se ha mantenido la creación en cliente para compatibilidad simple con el servidor DEV.
-- No incorpora `/setextras`, compra de activos, tarjetas, garajes, zonas editables ni integración real de jobs externos.
-- `/ceder` requiere que el personaje sea propietario; para reasignación administrativa utiliza `/setvehiculo`.
-- Los registros temporales se limpian al arrancar el recurso. Los IDs no se reutilizan.
+Todos los destinatarios comunes aceptan `2` (jugador conectado), `oscar_vega` o `alias:oscar_vega` (personaje registrado) y `char:oschar_0000000001` (ID persistente explícito). Un número desnudo siempre es conexión; para un alias numérico usar `alias:123`. No se crean destinatarios por errores de escritura. En `/setvehiculo 1 2`, el primer número es el vehículo y el segundo, el jugador.
 
+## Comandos conservados
 
-## HUD (v0.1.1)
-- Aparece en la esquina superior derecha: **ID de sesión** de FiveM y **DINERO EN MANO** del personaje activo.
-- No muestra el dinero del banco. Se consulta con `/dinero`.
-- Al resolver automáticamente la identidad se muestra el efectivo del personaje vinculado.
-- Si el usuario no tiene personaje activo, se muestra `--` en efectivo.
-- Se actualiza al cambiar el saldo, pagar o recibir un pago. Reconciliación cada 15 segundos.
-- `/hud` permite ocultar y volver a mostrar la interfaz en el cliente.
-- Es un HUD de solo lectura: el cliente no puede cambiar saldos mediante la interfaz.
-- NUI local en `html/`; no se requieren librerías ni servicios externos.
-- Si reemplazas la v0.1.0, **conserva `data.json`**. No hace falta migración de datos.
+| Área / permiso efectivo | Comandos |
+| --- | --- |
+| Personal | `/dinero`, `/misbienes`, `/mispropiedades`, `/hud`, `/pagar <destinatario> <cantidad>`, `/ceder <destinatario>` estando al volante del vehículo propio. |
+| `osdev.economy` | `/setmoney <destino> <cantidad> [cash\|bank]`, `/givemoney ...`, `/removemoney ...`. |
+| `osdev.jobs` | `/setjob <destino> <job> <rango>`, `/setduty <destino> on\|off`. |
+| `osdev.assets` | `/crearpropiedad <id> <tipo> <nombre> <precio> [destino]`, `/crearnegocio <tipo> <nombre> <destino> <precio>`, `/crearvehiculo <modelo> <color1> [color2] [temporal\|fijo] [destino]`. |
+| `osdev.assets` | `/setpropiedad <idBien> <destino>`, `/setnegocio ...`, `/setvehiculo ...`, `/recuperarvehiculo <id>`, `/setcolor <color1> [color2]`, `/setlivery <índice> [native\|mod48]`, `/listliveries`. |
+| `osdev.inspect` | `/verpropiedades <destino>`, `/listvehiculos`, `/listnegocios`, `/listpropiedades`, `/infovehiculo <id>`, `/infonegocio <id>`, `/infopropiedad <id>`. |
+| Diagnóstico | `/oscomandos`, `/ospermisos`. |
 
+`osdev.admin` autoriza todas las categorías Devtools. Los perfiles OSCAR permiten separar identidad, economía, empleos, activos y consultas. [Autorización y operación de txAdmin](docs/authorization.md).
 
-## v0.1.2 — Conservación de comandos y diagnóstico de /pagar
-- Se conservan los comandos de economía, empleos y activos. `/setpj` está retirado en la versión pretest. `/oscomandos` muestra los comandos actuales.
-- `/pagar <idJugador|alias> <cantidad>` exige dos **personajes distintos registrados**. Si estás solo con el personaje `oscar_vega`, `/pagar oscar_vega 100` se rechazará correctamente.
-- Para probar pagos, conectar dos cuentas de prueba con identidad automática; también se conservan los pagos a alias registrados desconectados. `/pagar` nunca crea destinatarios nuevos.
-- Mensajes específicos si falta el personaje del destinatario, si el ID no está conectado, si faltan fondos o si se intenta pagar al propio personaje.
-- **Persistencia:** no se modifica el esquema de `data.json`. Antes de actualizar, haz copia de seguridad de tu archivo `data.json` en la instalación existente. No sustituir ni eliminar ese archivo; el paquete no incluye `data.json`.
-- Si el inventario se desarrolla después, no modificar los registros ni los comandos de este recurso sin pruebas de regresión.
+Ejemplos: `/setmoney 2 5000 bank`, `/setjob oscar_vega gruppe6 vigilante`, `/setpropiedad 200 2`, `/pagar 2 50`. Los pagos transfieren efectivo entre personajes distintos; no admiten negativos, exceso de fondos o desbordamiento. La asignación administrativa de bienes no cobra sus precios.
 
+Los comandos físicos utilizan la posición del administrador; el destinatario solo decide la titularidad. Los vehículos siguen generándose mediante cliente autorizado, con colores, liveries, matrícula e ID del registro. La recuperación bloquea peticiones simultáneas del mismo registro. Sus registros, incluidos los temporales, se conservan sin reciclar IDs; las entidades temporales conocidas se retiran al detener el recurso. Los fijos no reaparecen automáticamente tras reiniciar. Un servidor con entity lockdown estricto necesita un adaptador de creación autorizado desde servidor.
 
-## 0.1.3-pretest (paquete de integración)
-- **No usar /setpj**: identidad por `license:` y conservacion de `bindings` anteriores. Las asociaciones antiguas no se reescriben.
-- `/ospermisos` consulta ACE del jugador real, no del principal introducido manualmente.
-- `/guardarpos`, `/ultimaubicacion`, `/setspawn <jugador|alias>` y ubicacion de muerte registrada por separado.
-- Restauracion de posicion en evento `playerSpawned` (requiere prueba con spawnmanager del servidor).
-- Exports GetCharacterId(playerSource) y GetCharacterByAlias(alias), para `os_inventory`.
-- **No concede ACE** por ser admin de txAdmin. Comprobar licencia real del jugador y `add_principal identifier.license:... group.admin`.
-- No contiene `data.json`: conservar el archivo existente del servidor y realizar copia antes de actualizar.
-- Quedan pendientes pruebas reales con jugadores, muerte, reconexion y reinicio. No utilizar en produccion.
+## Posición, muerte y aparición
+
+- `/guardarpos` y `/ultimaubicacion`: personales; posición viva válida, desconexión y muerte se distinguen.
+- `/setspawn <destino>`: `osdev.assets`; asigna la posición actual del administrador para la próxima aparición. No falsea la última posición real del destinatario.
+- `/tpusuario <idJugadorConectado>`: `osdev.assets`; mueve al administrador hasta el jugador, validando entidad y bucket. Se audita.
+
+`config/core.lua` define spawn inicial, hospital, buckets permitidos, comprobación vital (1 s) y respaldo de posiciones (60 s). Un único recorrido global comprueba jugadores; las posiciones modificadas se guardan en un solo lote. Se evita escribir por movimientos inferiores al umbral y por coordenadas inválidas/cero. Se guardan heading, bucket, fecha Unix y motivo al guardar manualmente, cambiar personaje, desconectar, detener el recurso y recibir el aviso de apagado de txAdmin. No es posible garantizar un último guardado ante caída abrupta del proceso.
+
+La muerte se verifica mediante entidad y salud del servidor; el aviso del cliente solo solicita esa comprobación. Se conserva un historial acotado de 64 eventos con ID secuencial y causa `unknown`, sin inventar una causa. `lastDeathPosition` no sustituye a `lastValidPosition` ni a `lastLogoutPosition`.
+
+`config/spawn.lua`: `Mode='spawnmanager'` exige iniciar el recurso oficial antes de Devtools. Devtools desactiva su auto-spawn, solicita la aparición mediante su API y confirma la posición desde el servidor. Espera colisiones, libera controles tras error/timeout y permite un único intento de respaldo; tras morir utiliza el hospital. No se deben activar dos dueños del respawn. Con `Mode='external'` Devtools no ejecuta apariciones: el recurso dueño puede consultar `GetCharacterSpawn` y usar el evento local de cambio de personaje. Ese adaptador externo no se implementa aquí.
+
+API oficial usada: [setAutoSpawn](https://docs.fivem.net/docs/resources/spawnmanager/functions/setAutoSpawn/), [spawnPlayer](https://docs.fivem.net/docs/resources/spawnmanager/functions/spawnPlayer/).
+
+## Arquitectura y persistencia
+
+| Archivo | Responsabilidad |
+| --- | --- |
+| `server.lua`, `client.lua`, `html/` | Comandos de economía/activos, integración nativa y HUD conservados. |
+| `server/state.lua` | Validación, migración v1 → v2 y resolutor único. |
+| `server/core.lua` | Cuenta/personaje, selección, posiciones, muerte y sesión de aparición. |
+| `server/identity_commands.lua` | Comandos de identidad/posición, eventos y exports. |
+| `server/storage.lua`, `server/storage/`, `server/lib/` | Adaptador de archivos, códec, snapshots alternos y verificación de escritura. |
+| `client/spawn_controller.lua`, `client/spawn.lua` | Ciclo asíncrono con generaciones, confirmación y spawnmanager. |
+| `config/authorization.lua`, `server/auth_*.lua`, `server/authorization_hub.lua` | Autorización granular OSCAR conservada. |
+
+En el primer arranque de esta versión se valida el `data.json` actual y se conserva su contenido exacto en `data/migration-013-source.json` antes de escribir. Los cambios siguientes utilizan `data/core.a.json` y `data/core.b.json`, con revisiones consecutivas. Se preservan dinero, empleo, aliases, bindings, IDs y propietarios de activos. Los antiguos `data/state.*` de borradores no se activan ni se modifican. **No volver a ejecutar la versión pretest sobre estos datos**: su `data.json` queda como origen histórico y ya no refleja las operaciones nuevas.
+
+Cada operación copia, valida, serializa, comprueba el viaje de ida/vuelta, escribe el slot alterno y relee sus bytes antes de publicarla. Acepta `true` o `1` del native `SaveResourceFile`; envía la longitud real en bytes. Fallos ambiguos, cambios externos y corrupción bloquean nuevas operaciones. Al reiniciar se usa la revisión más reciente solo si la secuencia de snapshots es válida. Un slot corrupto se conserva y exige recuperación manual desde una copia verificada; no se rebobina silenciosamente dinero al snapshot anterior. No hay garantía de fsync ni transacciones distribuidas con otros recursos. No editar ni mezclar datos en marcha.
+
+## Exports de identidad, solo servidor
+
+`config/core.lua → IdentityReaders` autoriza explícitamente recursos lectores (`os_inventory` preparado). Otros recursos reciben rechazo.
+
+```lua
+local active = exports.os_devtools:GetActiveCharacter(source)
+-- {characterId='oschar_...', alias='...', source=2, connected=true, spawning=false}
+local character = exports.os_devtools:ResolveCharacter('char:oschar_0000000001')
+-- {characterId, alias, connected, source?}; no cuenta, dinero ni bienes globales.
+local status = exports.os_devtools:GetIdentityStatus() -- {ready, version, provider}
+local spawn = exports.os_devtools:GetCharacterSpawn(source) -- lectores autorizados
+```
+
+El evento local de servidor `osdev:characterChanged(source, dtoOrNil)` permite invalidar sesiones. No está registrado como evento de red; un consumidor siempre debe volver a consultar el personaje efectivo. `GetCharacterId(source)` conserva **el alias** por compatibilidad pretest; para el ID estable usar `GetActiveCharacter().characterId`. `GetCharacterByAlias(alias)` conserva su contrato anterior. No se crea dependencia circular con Inventory.
+
+## Instalación y pruebas
+
+No se modifica `server.cfg`, txData ni el servidor automáticamente. Desde la configuración administrada por el operador: `add_ace group.admin osdev.admin allow`, iniciar `spawnmanager` y después `ensure os_devtools`. Si otro recurso controla spawn, configurar antes `Mode='external'`.
+
+```powershell
+npm.cmd ci --ignore-scripts --no-audit --no-fund
+npm.cmd test
+node tests/run.cjs --codec 'E:\Fivem-DEV\server\citizen\scripting\lua\json.lua'
+```
+
+57 casos Lua 5.4 con Wasmoon: autorización, comandos anteriores, pagos, tipos de destinatario, migración, selección, pertenencia de cuenta, posiciones, muerte, reconexión/reinicio, colisiones/timeout, snapshots y fallos de escritura. Se verificó además en modo lectura la conservación al migrar una copia local de datos existentes. Wasmoon, el códec de desarrollo y dkjson no equivalen al RapidJSON nativo ni a ejecutar FXServer.
+
+Pendiente ejecutar en FiveM, con copia de seguridad y dos cuentas de prueba:
+
+1. Consultar `/personaje`, `/dinero`, `/misbienes` y `/ospermisos`; confirmar datos anteriores y HUD.
+2. Crear `/crearpersonaje 1 segundo_test`, seleccionarlo, comprobar separación de saldos y volver al anterior. Intentar seleccionar un personaje de otra cuenta y repetir sin permisos.
+3. Desde el admin: `/setmoney 2 5000 cash`, `/setjob 2 gruppe6 vigilante`, asignar un bien existente a 2. Comparar titularidades, `/pagar 2 50` y dinero en ambas cuentas.
+4. `/guardarpos`, moverse, esperar 60 s, desconectar y reconectar con otro ID. Confirmar posición, heading, bucket e ID de personaje conservados.
+5. Morir: comprobar hospital y `/ultimaubicacion`; reconectar muerto y repetir con latencia de OneSync. Probar `/setspawn 2` y `/tpusuario 2`.
+6. Reiniciar el recurso y el servidor de prueba; revisar saldos, bienes, posiciones, snapshots y preferencias de HUD. Validar también falta/reinicio de spawnmanager y colisiones en las ubicaciones configuradas.
+
+No se ha realizado una ejecución controlada de estos casos en FiveM en esta entrega. No se ha hecho push ni se avanza a otra fase.

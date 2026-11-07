@@ -1,20 +1,15 @@
 local RESOURCE = GetCurrentResourceName()
-local FILE = 'data.json'
-local state = { version=1, nextVehicle=1, nextBusiness=1, characters={}, bindings={}, vehicles={}, businesses={}, properties={}, audit={} }
+local core
+local state={characters={},bindings={},vehicles={},businesses={},properties={},audit={}}
+local ready=false
 local sessions = {}  -- vehicle entity netId by record number; transient
 local requestNonce = 0
 local pending = {}
 local lastHudRequest = {}
-local ready = false
-local lastPosSaved = {}
 local function pushHud(src)
   if src == 0 or not GetPlayerName(src) then return end
-  local key
-  for _,identifier in ipairs(GetPlayerIdentifiers(src)) do
-    if identifier:sub(1,8)=='license:' then key=identifier;break end
-  end
-  local alias=key and state.bindings[key] or nil
-  local c=alias and state.characters[alias] or nil
+  local alias=core and core.lookup(src)
+  local c=alias and state.characters[alias]
   TriggerClientEvent('osdev:hudData',src,{
     playerId=src,
     cash=c and c.cash or nil,
@@ -28,7 +23,7 @@ RegisterNetEvent('osdev:requestHud',function()
   local src=source
   if src<=0 then return end
   local now=GetGameTimer()
-  if lastHudRequest[src] and now-lastHudRequest[src]<1500 then return end
+  if lastHudRequest[src] and now>=lastHudRequest[src] and now-lastHudRequest[src]<1500 then return end
   lastHudRequest[src]=now
   pushHud(src)
 end)
@@ -55,82 +50,22 @@ end
 local function admin(src,permission)
   return OSDevtools.AuthHub.can(src,permission or 'osdev.admin')
 end
-local function keyFor(src)
-  for _,id in ipairs(GetPlayerIdentifiers(src)) do
-    if id:sub(1,8)=='license:' then return id end
-  end
-  return nil
-end
 local function validAlias(s)
   return type(s)=='string' and #s>=3 and #s<=40 and s:match('^[%w_%-]+$') ~= nil
 end
-local function clone(t)
-  return json.decode(json.encode(t))
-end
-local function store(candidate)
-  local serial=json.encode(candidate)
-  if not serial then return false end
-  local old=LoadResourceFile(RESOURCE,FILE)
-  if old and #old>0 then
-    if not SaveResourceFile(RESOURCE,'data_backup.json',old,#old) then return false end
-  end
-  if not SaveResourceFile(RESOURCE,FILE,serial,#serial) then return false end
-  state=candidate
-  pushAllHud()
-  return true
-end
+local function clone(t) return OSDevtools.Util.copy(t) end
 local function action(src,label,fn)
-  local candidate=clone(state)
-  local ok, err=fn(candidate)
-  if not ok then out(src,err or 'Operacion denegada.'); return false end
-  candidate.audit[#candidate.audit+1]={time=os.time(),actor=src==0 and 'console' or (keyFor(src) or tostring(src)),operation=label}
-  if #candidate.audit>300 then table.remove(candidate.audit,1) end
-  if not store(candidate) then out(src,'ERROR: No se pudo guardar. No se ha aplicado el cambio.'); return false end
-  return true
+  local ok,err=core.change(src,label,fn)
+  if not ok then out(src,err or 'Operacion no confirmada.') end
+  return ok
 end
-local function characterFor(src)
-  if not ready or src==0 or not GetPlayerName(src) then return nil end
-  local key=keyFor(src)
-  if not key then return nil end
-  local existing=state.bindings[key]
-  if existing and state.characters[existing] then return existing end
-  -- Las vinculaciones anteriores de /setpj se conservan; solo las cuentas nuevas
-  -- reciben una identidad automatica, basada en su license persistente.
-  local id='dev_'..key:sub(-12):gsub('[^%w]','')
-  local candidate=id
-  local suffix=2
-  while state.characters[candidate] do candidate=id..'_'..suffix;suffix=suffix+1 end
-  local ok=action(src,'auto character',function(d)
-    d.characters[candidate]={cash=0,bank=0,job='unemployed',rank='-',duty=false}
-    d.bindings[key]=candidate
-    return true
-  end)
-  return ok and candidate or nil
+local function characterFor(src) return core and core.ensure(src) end
+local function resolve(value) return core.resolve(value) end
+local function ownerLabel(alias)
+  local character=alias and state.characters[alias]
+  return character and (alias..' ['..character.id..']') or 'sin propietario'
 end
--- Crear o recuperar la identidad sin /setpj al entrar, una vez cargados los datos.
-CreateThread(function()
-  while true do
-    Wait(5000)
-    if ready then
-      for _,s in ipairs(GetPlayers()) do characterFor(tonumber(s)) end
-    end
-  end
-end)
-local function resolve(s)
-  if not s then return nil end
-  local id=integer(s)
-  if id and id>0 and GetPlayerName(id) then return characterFor(id) end
-  return validAlias(s) and state.characters[s] and s or nil
-end
-local function ownerLabel(alias) return alias or 'sin propietario' end
-local function getCoords(src)
-  if src==0 then return nil end
-  local ped=GetPlayerPed(src)
-  if not ped or ped==0 then return nil end
-  local c=GetEntityCoords(ped)
-  if not c then return nil end
-  return {x=c.x,y=c.y,z=c.z,h=GetEntityHeading(ped),bucket=GetPlayerRoutingBucket(src)}
-end
+local function getCoords(src) return core and core.position(src) end
 local function needAdmin(src,permission)
   permission=permission or 'osdev.admin'
   if not ready then out(src,'Registro no disponible; revisar almacenamiento.');return false end
@@ -154,96 +89,6 @@ RegisterCommand('setuser',function(src)
   if not needAdmin(src) then return end
   out(src,'Identidad automatica activa. /setpj fue retirado; no se cambian los propietarios existentes.')
 end,false)
--- Posiciones: server-authoritative; muerte y desconexion se guardan por separado.
-local function validPosition(p)
-  return p and type(p.x)=='number' and type(p.y)=='number' and type(p.z)=='number'
-    and math.abs(p.x)<20000 and math.abs(p.y)<20000 and math.abs(p.z)<20000
-end
-local function savePosition(src,kind)
-  if not ready or src==0 then return false end
-  local alias=characterFor(src)
-  if not alias then return false end
-  local pos=getCoords(src)
-  if not validPosition(pos) then return false end
-  return action(src,'position '..kind,function(d)
-    local c=d.characters[alias]; if not c then return false,'Personaje no disponible.' end
-    local rec={x=pos.x,y=pos.y,z=pos.z,h=pos.h,bucket=pos.bucket,time=os.time()}
-    if kind=='death' then c.lastDeathPosition=rec else c.lastPosition=rec end
-    return true
-  end)
-end
-RegisterCommand('guardarpos',function(src)
-  if src==0 then return end
-  out(src,savePosition(src,'manual') and 'Posicion guardada.' or 'No se pudo guardar la posicion.')
-end,false)
-RegisterCommand('ultimaubicacion',function(src)
-  if src==0 then return end
-  local a=characterFor(src);local c=a and state.characters[a]
-  if not c then return out(src,'Identidad no disponible.') end
-  local p=c.lastPosition
-  local d=c.lastDeathPosition
-  out(src,p and ('Ultima ubicacion: %.2f, %.2f, %.2f'):format(p.x,p.y,p.z) or 'Sin ultima posicion guardada.')
-  if d then out(src,('Ultima muerte: %.2f, %.2f, %.2f'):format(d.x,d.y,d.z)) end
-end,false)
-RegisterCommand('setspawn',function(src,args)
-  if not needAdmin(src,'osdev.assets') then return end
-  local who=resolve(args[1]);local pos=getCoords(src)
-  if not who or not validPosition(pos) then return out(src,'Uso: /setspawn <idJugador|alias>, desde la ubicacion deseada.') end
-  if action(src,'setspawn '..who,function(d)
-    d.characters[who].customSpawn=pos;return true
-  end) then out(src,'Spawn asignado a '..who) end
-end,false)
-RegisterNetEvent('osdev:deathObserved',function()
-  local src=source
-  if src<=0 or not ready then return end
-  local now=GetGameTimer()
-  if lastPosSaved['death'..src] and now-lastPosSaved['death'..src]<15000 then return end
-  -- Comprobacion de muerte sobre ped del servidor, no confiar en coordenadas cliente.
-  local ped=GetPlayerPed(src)
-  if ped==0 or not DoesEntityExist(ped) or GetEntityHealth(ped)>0 then return end
-  lastPosSaved['death'..src]=now
-  savePosition(src,'death')
-end)
-AddEventHandler('onResourceStop',function(res)
-  if res~=RESOURCE then return end
-  for _,id in ipairs(GetPlayers()) do savePosition(tonumber(id),'resource_stop') end
-end)
-AddEventHandler('playerDropped',function()
-  local src=source
-  savePosition(src,'logout')
-  lastPosSaved[src]=nil
-  lastPosSaved['death'..src]=nil
-end)
-CreateThread(function()
-  while true do
-    Wait(60000)
-    if ready then
-      for _,id in ipairs(GetPlayers()) do
-        local src=tonumber(id);local p=getCoords(src)
-        if validPosition(p) then
-          local a=characterFor(src);local c=a and state.characters[a]
-          local old=c and c.lastPosition
-          if not old or (p.x-old.x)^2+(p.y-old.y)^2+(p.z-old.z)^2>25 then
-            savePosition(src,'periodic')
-          end
-        end
-      end
-    end
-  end
-end)
-RegisterNetEvent('osdev:requestSavedPosition',function()
-  local src=source
-  local a=characterFor(src);local c=a and state.characters[a]
-  if not c then return end
-  local p=c.lastPosition or c.customSpawn
-  if validPosition(p) then TriggerClientEvent('osdev:applySavedPosition',src,p) end
-end)
-exports('GetCharacterId',function(src)
-  return characterFor(tonumber(src) or -1)
-end)
-exports('GetCharacterByAlias',function(alias)
-  return type(alias)=='string' and state.characters[alias] and alias or nil
-end)
 RegisterCommand('dinero',function(src)
   if src==0 then return out(src,'Entra en juego para consultar tu saldo.') end
   local alias=exists(src); if alias then showCharacter(src,alias) end
@@ -286,13 +131,13 @@ RegisterCommand('setmoney',function(src,args)
   if not needAdmin(src,'osdev.economy') then return end
   local who=resolve(args[1]); local amount=money(args[2]); local account=args[3] or 'cash'
   if not who or amount==nil or (account~='cash' and account~='bank') then return out(src,'Uso: /setmoney <idJugador|alias> <cantidad> [cash|bank]') end
-  if action(src,'setmoney',function(d) d.characters[who][account]=amount; return true end) then out(src,'Saldo '..account..' de '..who..': $'..amount) end
+  if action(src,'setmoney '..who..' '..account..' '..amount,function(d) d.characters[who][account]=amount; return true end) then out(src,'Saldo '..account..' de '..who..': $'..amount) end
 end,false)
 RegisterCommand('givemoney',function(src,args)
   if not needAdmin(src,'osdev.economy') then return end
   local who=resolve(args[1]); local amount=positive(args[2]); local account=args[3] or 'cash'
   if not who or not amount or (account~='cash' and account~='bank') then return out(src,'Uso: /givemoney <idJugador|alias> <cantidad> [cash|bank]') end
-  if action(src,'givemoney',function(d)
+  if action(src,'givemoney '..who..' '..account..' '..amount,function(d)
     if d.characters[who][account]+amount>2147483647 then return false,'Saldo fuera de rango.' end
     d.characters[who][account]=d.characters[who][account]+amount;return true
   end) then out(src,'Añadidos $'..amount..' a '..who) end
@@ -301,7 +146,7 @@ RegisterCommand('removemoney',function(src,args)
   if not needAdmin(src,'osdev.economy') then return end
   local who=resolve(args[1]); local amount=positive(args[2]); local account=args[3] or 'cash'
   if not who or not amount or (account~='cash' and account~='bank') then return out(src,'Uso: /removemoney <idJugador|alias> <cantidad> [cash|bank]') end
-  if action(src,'removemoney',function(d)
+  if action(src,'removemoney '..who..' '..account..' '..amount,function(d)
     if d.characters[who][account]<amount then return false,'Fondos insuficientes.' end
     d.characters[who][account]=d.characters[who][account]-amount;return true
   end) then out(src,'Retirados $'..amount..' a '..who) end
@@ -317,22 +162,8 @@ RegisterCommand('pagar',function(src,args)
   if not target or not amount then
     return out(src,'Uso: /pagar <idJugador|personaje> <cantidad>. Ejemplo: /pagar 2 100')
   end
-  local id=positive(target)
-  local to
-  if id then
-    if not GetPlayerName(id) then
-      return out(src,('El jugador con ID %d no esta conectado. Usa un alias de personaje registrado para pagarle desconectado.'):format(id))
-    end
-    to=characterFor(id)
-    if not to or not state.characters[to] then
-      return out(src,('El jugador ID %d todavia no tiene identidad persistente disponible.'):format(id))
-    end
-  else
-    if not validAlias(target) or not state.characters[target] then
-      return out(src,'No existe el personaje '..tostring(target)..'. Comprueba su alias o ID de jugador.')
-    end
-    to=target
-  end
+  local to,resolveError=core.resolve(target)
+  if not to then return out(src,resolveError or 'Destinatario no disponible. Usa idJugador, alias:ALIAS o char:ID.') end
   if from==to then return out(src,'No puedes pagarte a ti mismo. Para pruebas usa /setmoney o /givemoney.') end
   if action(src,('pagar %s -> %s $%d'):format(from,to,amount),function(d)
     local sender=d.characters[from]
@@ -363,7 +194,7 @@ RegisterCommand('ospermisos',function(src)
   out(src,('Sesion %d | identidad %s | ACE osdev.admin=%s | ACE general command=%s'):format(src,OSDevtools.AuthIdentity.mask(principal),tostring(ace==true or ace==1),tostring(general==true or general==1)))
   out(src,('txAdmin compatible=%s | autenticado=%s | perfil temporal=%s | almacenamiento=%s | personaje=%s'):format(tostring(tx.txCompatible),tostring(tx.authenticated),tx.profile or 'ninguno',tostring(ready),tostring(characterFor(src) or 'no disponible')))
   local scopes={}
-  for _,scope in ipairs({'osdev.admin','osdev.economy','osdev.jobs','osdev.assets','osdev.inspect','ossecurity.admin','osinventory.admin'}) do
+  for _,scope in ipairs({'osdev.admin','osdev.economy','osdev.jobs','osdev.assets','osdev.inspect','osdev.identity','ossecurity.admin','osinventory.admin'}) do
     local allowed,provider=OSDevtools.AuthHub.can(src,scope)
     scopes[#scopes+1]=scope..'='..tostring(allowed)..' ('..provider..')'
   end
@@ -378,6 +209,8 @@ RegisterCommand('oscomandos',function(src)
     'CONSULTA: /listnegocios, /infonegocio, /listpropiedades, /infopropiedad'
   }
   for _,line in ipairs(lines) do out(src,line) end
+  out(src,'PERSONAJES: /personaje [alias|char:id]; ADMIN: /crearpersonaje, /seleccionarpersonaje, /vincularpersonaje. /setpj retirado.')
+  out(src,'POSICION: /guardarpos, /ultimaubicacion; ADMIN: /setspawn <destinatario>, /tpusuario <id>.')
 end,false)
 
 RegisterCommand('setjob',function(src,args)
@@ -398,8 +231,8 @@ local function createAsset(kind,src,args)
   local pos=getCoords(src);if not pos then return out(src,'Debes ejecutar este comando dentro del juego.') end
   local id,typ,name,price,owner
   if kind=='properties' then
-    id=positive(args[1]);typ=args[2];name=args[3];price=money(args[4]);owner=nil
-    if not id or not validAlias(typ) or not validAlias(name) or price==nil then return out(src,'Uso: /crearpropiedad <id> <tipo> <nombre> <precio>') end
+    id=positive(args[1]);typ=args[2];name=args[3];price=money(args[4]);owner=args[5] and resolve(args[5]) or nil
+    if not id or not validAlias(typ) or not validAlias(name) or price==nil or (args[5] and not owner) then return out(src,'Uso: /crearpropiedad <id> <tipo> <nombre> <precio> [destinatario]') end
   else
     typ=args[1];name=args[2];owner=resolve(args[3]);price=money(args[4])
     if not validAlias(typ) or not validAlias(name) or not owner or price==nil then return out(src,'Uso: /crearnegocio <tipo> <nombre> <propietario> <precio>') end
@@ -409,7 +242,7 @@ local function createAsset(kind,src,args)
     if d[kind][tostring(id)] then return false,'ERROR: El ID '..id..' ya existe.' end
     d[kind][tostring(id)]={id=id,type=typ,name=name,owner=owner,price=price,position=pos}
     return true
-  end) then out(src,('Creado %s #%d %s en tus coordenadas.'):format(kind,id,name)) end
+  end) then out(src,('Creado %s #%d %s en tus coordenadas. Titular: %s.'):format(kind,id,name,ownerLabel(owner))) end
 end
 RegisterCommand('crearpropiedad',function(src,args) createAsset('properties',src,args) end,false)
 RegisterCommand('crearnegocio',function(src,args) createAsset('businesses',src,args) end,false)
@@ -420,7 +253,7 @@ local function assign(kind,src,args)
   if action(src,'assign '..kind,function(d)
     local obj=d[kind][tostring(id)];if not obj then return false,'No existe ese ID en esta categoria.' end
     obj.owner=who;return true
-  end) then out(src,'Asignado '..kind..' #'..id..' a '..who) end
+  end) then out(src,'Asignado '..kind..' #'..id..' a '..ownerLabel(who)) end
 end
 RegisterCommand('setpropiedad',function(src,args) assign('properties',src,args) end,false)
 RegisterCommand('setnegocio',function(src,args) assign('businesses',src,args) end,false)
@@ -491,6 +324,10 @@ RegisterCommand('recuperarvehiculo',function(src,args)
   if not needAdmin(src,'osdev.assets') then return end
   local id=positive(args[1]);local v=id and state.vehicles[tostring(id)]
   if not v then return out(src,'Uso: /recuperarvehiculo <idExistente>') end
+  for nonce,context in pairs(pending) do
+    if GetGameTimer()>=context.expires then pending[nonce]=nil
+    elseif context.id==id then return out(src,'Generacion pendiente para el vehiculo #'..id..'; espera su resultado.') end
+  end
   local net=sessions[id];local ent=net and NetworkGetEntityFromNetworkId(net) or 0
   if ent~=0 and DoesEntityExist(ent) then return out(src,'Ya hay una entidad activa para el vehiculo #'..id) end
   requestNonce=requestNonce+1
@@ -502,7 +339,7 @@ RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,live
   local src=source
   if not needAdmin(src,'osdev.assets') then return end
   local veh=GetVehiclePedIsIn(GetPlayerPed(src),false)
-  if veh==0 or not DoesEntityExist(veh) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return end
+  if veh==0 or not DoesEntityExist(veh) or GetPedInVehicleSeat(veh,-1)~=GetPlayerPed(src) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return end
   local found
   for id,v in pairs(state.vehicles) do if v.plate==plate then found=id;break end end
   if not found then return out(src,'Vehiculo no registrado: cambios no persistidos.') end
@@ -522,7 +359,7 @@ RegisterNetEvent('osdev:cederVehicle',function(target,plate)
   local to=resolve(target)
   if not to or from==to then return out(src,'Destino invalido. Uso: /ceder <idJugador|alias>') end
   local veh=GetVehiclePedIsIn(GetPlayerPed(src),false)
-  if veh==0 or not DoesEntityExist(veh) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return out(src,'Debes estar dentro del vehiculo indicado.') end
+  if veh==0 or not DoesEntityExist(veh) or GetPedInVehicleSeat(veh,-1)~=GetPlayerPed(src) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return out(src,'Debes conducir el vehiculo indicado.') end
   local found
   for id,v in pairs(state.vehicles) do if v.plate==plate then found=id;break end end
   if not found then return out(src,'Este vehiculo no esta registrado en os_devtools.') end
@@ -554,31 +391,44 @@ AddEventHandler('onResourceStop',function(name)
     end
   end
 end)
-CreateThread(function()
-  local raw=LoadResourceFile(RESOURCE,FILE)
-  if raw and #raw>0 then
-    local ok,decoded=pcall(json.decode,raw)
-    if ok and type(decoded)=='table' and decoded.version==1 and type(decoded.characters)=='table' and type(decoded.vehicles)=='table' then
-      state=decoded
-      state.audit=state.audit or {};state.properties=state.properties or {};state.businesses=state.businesses or {};state.bindings=state.bindings or {}
-    else print('[os_devtools] ERROR archivo data.json invalido: no se reemplaza.');return end
-  else
-    if not store(state) then print('[os_devtools] ERROR no se pudo crear data.json') end
-  end
-  -- Vehicles temporales are session-only, but avoid deletion of records until a successful save.
-  local candidate=clone(state)
-  for k,v in pairs(candidate.vehicles) do if not v.fixed then candidate.vehicles[k]=nil end end
-  if not store(candidate) then print('[os_devtools] ERROR no se pudo limpiar temporales') end
-  ready=true
-  print('[os_devtools] Listo (USO EXCLUSIVO DEV).')
-  pushAllHud()
-end)
+local storage,storageError=OSDevtools.openStorage(RESOURCE)
+core=OSDevtools.Core.new({
+  storage=storage,now=os.time,clock=GetGameTimer,connected=function(src) return GetPlayerName(src)~=nil end,
+  identifiers=GetPlayerIdentifiers,
+  world=function(src)
+    local ped=GetPlayerPed(src)
+    if not ped or ped==0 or not DoesEntityExist(ped) then return nil,nil end
+    local point=GetEntityCoords(ped)
+    if not point then return nil,nil end
+    return {x=point.x,y=point.y,z=point.z,h=GetEntityHeading(ped),bucket=GetPlayerRoutingBucket(src)},GetEntityHealth(ped)
+  end,
+  schedule=SetTimeout,
+  publish=function(snapshot,status) state=snapshot;ready=status;pushAllHud() end,
+  changed=function(src,dto)
+    TriggerEvent('osdev:characterChanged',src,dto)
+    if GetPlayerName(src) then TriggerClientEvent('osdev:characterChanged',src,dto) end
+  end,
+  spawn=function(src,context)
+    SetPlayerRoutingBucket(src,context.position.bucket)
+    TriggerClientEvent('osdev:spawnCharacter',src,context)
+  end,
+  spawnAccepted=function(src,token) TriggerClientEvent('osdev:spawnAccepted',src,token) end
+})
+OSDevtools.Runtime=core
+local loaded,loadError=core.start()
+if not loaded then print('[os_devtools] Registro bloqueado: '..tostring(storageError or loadError)) end
+OSDevtools.bindCore({core=core,reply=out,guard=needAdmin})
+if loaded then
+  for _,id in ipairs(GetPlayers()) do local alias,err=core.ensure(tonumber(id));if not alias then out(tonumber(id),err) end end
+  print('[os_devtools] 0.1.3 listo. Datos conservados; /setpj permanece retirado.')
+end
 exports('GetBalance',function(alias,account)
   local c=state.characters[alias]
-  if not c or (account~='cash' and account~='bank') then return nil end
+  if not ready or not c or (account~='cash' and account~='bank') then return nil end
   return c[account]
 end)
 exports('GetAsset',function(category,id)
+  if not ready or not ({vehicles=true,businesses=true,properties=true})[category] then return nil end
   local d=state[category]
   return d and clone(d[tostring(id)]) or nil
 end)

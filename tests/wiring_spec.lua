@@ -1,6 +1,8 @@
 local total,failures=0,0
 local function test(name,run) total=total+1;local ok,err=pcall(run);if not ok then failures=failures+1 end;__report(name,ok,tostring(err)) end
-local scripts={'config/authorization.lua','server/lib/util.lua','server/auth_identity.lua','server/authorization_hub.lua','server/auth_boot.lua','server.lua'}
+local scripts={'config/spawn.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
+    'server/storage/codec.lua','server/storage/resource_files.lua','server/storage/json.lua','server/state.lua','server/storage.lua','server/core.lua',
+    'server/auth_identity.lua','server/authorization_hub.lua','server/auth_boot.lua','server/identity_commands.lua','server.lua'}
 local function legacy()
     return {version=1,nextVehicle=2,nextBusiness=2,characters={
         oscar_vega={cash=1000,bank=2000,job='gruppe6',rank='vigilante',duty=false,lastPosition={x=10,y=20,z=30,h=90,bucket=0,time=1700000000}},
@@ -9,11 +11,12 @@ local function legacy()
         vehicles={['1']={id=1,model='sultan',primary=0,secondary=111,fixed=true,plate='OS000001',owner='oscar_vega'}},
         businesses={['1']={id=1,type='ltd',name='market',price=30,owner='client_test'}},properties={},audit={}}
 end
-local function fixture(files)
+local function fixture(files,behavior)
     local c={files=files or {['data.json']=json.encode(legacy())},commands={},events={},net={},exports={},threads={},messages={},players={},clock=10000,writes=0,
         aces={[1]={['osdev.admin']=true,['command']=true},[2]={}},states={monitor='started'},version='8.1.2'}
     for id=1,2 do c.players[id]={identifiers={'license:'..string.rep(string.char(96+id),40)},point={x=id*10,y=20,z=30},h=90,bucket=0} end
-    local originalPrint=print
+    for key,value in pairs(behavior or {}) do c[key]=value end
+    local originalPrint,originalOpen=print,io.open
     RegisterCommand=function(name,fn) c.commands[name]=fn end
     RegisterNetEvent=function(name,fn) c.net[name]=fn end
     AddEventHandler=function(name,fn) c.events[name]=c.events[name] or {};table.insert(c.events[name],fn) end
@@ -32,33 +35,52 @@ local function fixture(files)
     GetPlayerPed=function(source) return c.players[source] and source+100 or 0 end
     GetEntityCoords=function(ped) return c.players[ped-100].point end
     GetEntityHeading=function(ped) return c.players[ped-100].h end
+    GetEntityHealth=function(ped) return c.players[ped-100].health or 200 end
     GetPlayerRoutingBucket=function(source) return c.players[source].bucket end
     DoesEntityExist=function(ped) return c.players[ped-100]~=nil end
     NetworkGetEntityFromNetworkId=function() return 0 end
+    SetPlayerRoutingBucket=function(source,bucket) c.players[source].bucket=bucket end
+    SetEntityCoords=function(ped,x,y,z) c.players[ped-100].point={x=x,y=y,z=z} end
     GetGameTimer=function() return c.clock end
     CreateThread=function(fn) c.threads[#c.threads+1]=coroutine.create(fn) end
     Wait=function() coroutine.yield() end
+    SetTimeout=function(delay,callback) c.timers=c.timers or {};c.timers[#c.timers+1]={delay=delay,callback=callback} end
+    TriggerEvent=function(name,...) c.changed={name,...} end
     LoadResourceFile=function(_,file) return c.files[file] end
-    SaveResourceFile=function(_,file,bytes,length) assert(length==#bytes);c.files[file]=bytes;c.writes=c.writes+1;return true end
+    SaveResourceFile=function(_,file,bytes,length)
+        assert(length==#bytes);c.writes=c.writes+1
+        if c.failWrite or c.failAt==c.writes then
+            if c.partial then c.files[file]='{partial' end
+            if c.completeBeforeError then c.files[file]=bytes end
+            return false
+        end
+        c.files[file]=bytes;return c.nativeWrite==nil and true or c.nativeWrite
+    end
+    io.open=function() return nil,'missing',2 end
     exports=function(name,fn) c.exports[name]=fn end
     print=function() end
     local ok,err=pcall(function()
         for _,file in ipairs(scripts) do dofile('/repo/'..file) end
         for _,thread in ipairs(c.threads) do local success,reason=coroutine.resume(thread);assert(success,reason) end
     end)
-    print=originalPrint;assert(ok,err)
+    print,io.open=originalPrint,originalOpen;assert(ok,err);c.core=OSDevtools.Runtime
     function c.command(name,source,args) c.origin=nil;assert(c.commands[name],name)(source,args or {}) end
     function c.event(name,origin,...) source=0;c.origin=origin;for _,fn in ipairs(c.events[name] or {}) do fn(...) end;c.origin=nil end
     function c.auth(id) c.event('txAdmin:events:adminAuth','monitor',{netid=id,isAdmin=true}) end
-    function c.snapshot() return json.decode(c.files['data.json']) end
+    function c.snapshot()
+        local a=c.files['data/core.a.json'];local b=c.files['data/core.b.json']
+        a=a and OSDevtools.JsonCodec.decode(a);b=b and OSDevtools.JsonCodec.decode(b)
+        return a and b and (a.revision>b.revision and a or b) or a or b or json.decode(c.files['data.json'])
+    end
     function c.text(source) local result={};for _,msg in ipairs(c.messages) do if msg.source==source and msg.name=='osdev:msg' then result[#result+1]=msg.args[1] end end;return table.concat(result,'\n') end
     return c
 end
 test('All Lua syntax and actual manifest paths load while preserving pretest position commands',function()
     for _,file in ipairs(__files) do assert(loadfile('/repo/'..file),file) end
     local environment={fx_version=function(v) assert(v=='cerulean') end,game=function(v) assert(v=='gta5') end,lua54=function() end,author=function() end,description=function() end,
-        version=function(v) assert(v=='0.1.3-pretest.1') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
-        client_script=function(file) assert(loadfile('/repo/'..file)) end,ui_page=function() end,files=function() end}
+        version=function(v) assert(v=='0.1.3') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
+        shared_script=function(file) assert(loadfile('/repo/'..file)) end,
+        client_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,ui_page=function() end,files=function() end}
     assert(loadfile('/repo/fxmanifest.lua','t',environment))()
     local c=fixture();assert(not c.commands.setpj and c.commands.guardarpos and c.commands.ultimaubicacion and c.commands.setspawn)
     for _,name in ipairs({'setuser','setmoney','givemoney','removemoney','setjob','setduty','crearpropiedad','crearnegocio','crearvehiculo','setpropiedad','setnegocio','setvehiculo','recuperarvehiculo','setcolor','setlivery','listliveries','verpropiedades','listvehiculos','listnegocios','listpropiedades','infovehiculo','infonegocio','infopropiedad','pagar','ceder','dinero','misbienes','mispropiedades','osautorizar','osrevocar','ospermisos'}) do assert(c.commands[name],name) end
@@ -129,7 +151,10 @@ test('Persistent auth identity comes from the server and rejects malformed or am
 end)
 test('Existing automatic identity, oscar_vega, balances, assets and pretest position fields are preserved',function()
     local initial=legacy();local c=fixture();local d=c.snapshot()
-    for alias,character in pairs(initial.characters) do for field,value in pairs(character) do assert(OSDevtools.Util.equal(value,d.characters[alias][field]),field) end end
+    for alias,character in pairs(initial.characters) do for field,value in pairs(character) do
+        if field=='lastPosition' then for axis,number in pairs(value) do assert(d.characters[alias][field][axis]==number,axis) end
+        else assert(OSDevtools.Util.equal(value,d.characters[alias][field]),field) end
+    end end
     assert(d.vehicles['1'].owner=='oscar_vega' and d.businesses['1'].owner=='client_test')
     c.players[7]=c.players[1];c.players[1]=nil;assert(c.exports.GetCharacterId(7)=='oscar_vega')
     c.players[9]={identifiers={'license:'..string.rep('c',40)},point={x=30,y=20,z=30},h=90,bucket=0}
@@ -148,4 +173,8 @@ test('Personal asset requests do not bypass inspection scopes or expose other ac
     assert(not message.args[1]['1'] and message.args[2]['1'].owner=='client_test')
     assert(not message.args[5].lastPosition and not json.encode(message):find('license:',1,true))
 end)
-print(('Wiring tests: %d | Passed: %d | Failed: %d'):format(total,total-failures,failures));__failures=failures
+DevtoolsTest={fixture=fixture,test=test,legacy=legacy}
+dofile('/repo/tests/core_spec.lua')
+dofile('/repo/tests/spawn_client_spec.lua')
+DevtoolsTest=nil
+print(('Wiring/core tests: %d | Passed: %d | Failed: %d'):format(total,total-failures,failures));__failures=failures

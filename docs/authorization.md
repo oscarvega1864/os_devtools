@@ -59,12 +59,13 @@ ya controla el servidor. El servicio no puede inferir los roles definidos en el 
 | --- | --- |
 | `oscar_admin` | Administración de Devtools, Security e Inventory, solo mediante asignación explícita. |
 | `finance` | `osdev.economy`: setmoney, givemoney, removemoney. |
+| `identity` | `osdev.identity`: crear, seleccionar y vincular personajes heredados con confirmación. |
 | `jobs` | `osdev.jobs`: setjob, setduty. |
 | `assets` | `osdev.assets` y `osdev.inspect`: crear/asignar bienes, vehículos, aspecto, setspawn y consultas. |
 | `observer` | `osdev.inspect`: consultas administrativas; sin mutaciones. |
 | `devtools_admin` | `osdev.admin`: administración general de Devtools. |
 | `security_admin` | `ossecurity.admin`: contrato administrativo existente de OS Security. |
-| `inventory_admin` | `osinventory.admin`: giveitem, removeitem, inspectinventory. |
+| `inventory_admin` | `osinventory.admin`: giveitem, removeitem, clearinventory, inspectinventory. |
 
 Un perfil nuevo sustituye al anterior; no acumula capacidades. Duración de 1 a
 60 minutos, limitada además por la prueba de autenticación, que caduca a los 15
@@ -127,11 +128,7 @@ para funcionar con ACE; `AdminAuthorizationResource=false` desactiva el adaptado
 No concede ítems, `ossecurity.g6.operations`, perfiles G6, propiedad de dispositivos
 ni vídeo remoto. Las validaciones existentes permanecen vigentes.
 
-En la revisión final apareció una implementación `os_inventory 0.1.0-pretest`.
-Se verificaron su manifiesto y `server/main.lua`: giveitem, removeitem e
-inspectinventory comparten `osinventory.admin`. Solo después se añadió su consumidor
-y un adaptador opcional para ese contrato exacto. No se modificaron identidades,
-objetos, persistencia, NUI ni APIs RP. Esto no completa la fase general del inventario.
+El adaptador de Inventory se verificó inicialmente sobre la versión pretest. La fase 0.1.0 mantiene el mismo permiso administrativo, añade clearinventory confirmado y comprueba de nuevo la autorización efectiva en cada operación. Los permisos de identidad RP y los de inventario permanecen separados.
 
 Proveedores externos están deshabilitados por defecto. Tras configurar el nombre
 exacto del recurso y sus permisos en `ExternalProviders`, ese recurso puede registrar:
@@ -146,17 +143,9 @@ El callback se consulta en cada operación, acepta solo `true` literal y está l
 a sus permisos configurados. Se elimina al detener el recurso; debe registrarse
 de nuevo al arrancar. No aceptar nombres, roles o permisos declarados por clientes.
 
-## Conservación de la versión pretest
+## Conservación de datos
 
-Se preservaron los cambios existentes de `server.lua`, `client.lua` y el manifiesto,
-según la instrucción de continuar sobre `0.1.3-pretest`. La capa de autorización
-no cambia su almacenamiento, posiciones, dinero, empleos ni activos al conceder
-permisos. No activa otra migración ni mezcla `data.json` con snapshots anteriores.
-El almacenamiento y la fase completa de posiciones siguen pendientes de revisión.
-
-Los borradores previos se conservaron en `.tools/pending-hotfix-identity` y
-`.tools/pending-0.1.3`, fuera de Git. No borrar datos reales ni promover un snapshot
-antiguo sobre el estado actual al retomarlos.
+La capa de autorización no escribe datos RP ni persiste delegaciones. La fase 0.1.3 amplía ahora identidad y posiciones mediante una migración separada, respaldada y validada; véase README.md. El data.json actual se preserva y las revisiones nuevas usan data/core.a.json y data/core.b.json. No se activan snapshots de borradores anteriores. Los IDs, saldos, empleos y titularidades se conservan.
 
 ## Pruebas y validación pendiente
 
@@ -168,11 +157,7 @@ npm.cmd test
 node tests/run.cjs --codec 'E:\Fivem-DEV\server\citizen\scripting\lua\json.lua'
 ```
 
-Pasan 31 pruebas: 17 del servicio y 14 de conexión. Cubren administrador ACE,
-segundo administrador txAdmin, moderador, jugador normal, eliminación, reconexión,
-reinicio, cambios en caliente, suplantación, exports, pagos y conservación de campos
-pretest. Los eventos, nativos y archivos se simulan; dkjson heredado y el códec de
-desarrollo no sustituyen al RapidJSON nativo.
+El hotfix original tenía 31 casos; la fase 0.1.3 amplía la suite a 57. Incluye los ocho escenarios de autorización y las regresiones de identidad, pagos, activos, migración y posiciones. Eventos, nativos y archivos están simulados; Wasmoon y dkjson no sustituyen al RapidJSON nativo ni a una ejecución real en FiveM.
 
 Comprobación manual en el servidor local respaldado:
 

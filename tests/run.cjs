@@ -14,6 +14,8 @@ async function main() {
     }
   }
   scan('');
+  const manifest=fs.readFileSync(path.join(root,'fxmanifest.lua'),'utf8');
+  for (const match of manifest.matchAll(/'([^']+\.(?:lua|html|css|js))'/g)) assert(fs.existsSync(path.join(root,match[1])),`Missing manifest path: ${match[1]}`);
   for (const file of files) await factory.mountFile('/repo/'+file,fs.readFileSync(path.join(root,file)));
   const lua = await factory.createEngine({enableProxy:false});
   try {
@@ -50,13 +52,20 @@ async function main() {
       `);
     }
     lua.global.set('__files',files);
-    lua.global.set('__report',(name,ok,err)=>console.log(`${ok?'PASS':'FAIL'} ${name}${ok?'':': '+err}`));
+    let passed=0,failed=0;
+    lua.global.set('__report',(name,ok,err)=>{ok?passed++:failed++;console.log(`${ok?'PASS':'FAIL'} ${name}${ok?'':': '+err}`);});
     await lua.doFile('/repo/tests/authorization_spec.lua');
     assert.equal(lua.global.get('__failures'),0);
     if (!process.argv.includes('--auth-only')) {
       await lua.doFile('/repo/tests/wiring_spec.lua');
       assert.equal(lua.global.get('__failures'),0);
     }
+    const legacyIndex=process.argv.indexOf('--legacy');
+    if(legacyIndex>=0){
+      await factory.mountFile('/observed.json',fs.readFileSync(process.argv[legacyIndex+1]));
+      await lua.doString(`local f=assert(io.open('/observed.json','rb'));local bytes=f:read('*a');f:close();local raw=OSDevtools.JsonCodec.decode(bytes);local migrated,err=OSDevtools.State.migrate(raw);assert(migrated,err);for alias,c in pairs(raw.characters) do for _,field in ipairs({'cash','bank','job','rank','duty'}) do assert(c[field]==migrated.characters[alias][field]) end end;for _,field in ipairs({'nextVehicle','nextBusiness','bindings'}) do assert(OSDevtools.Util.equal(raw[field],migrated[field])) end;for _,category in ipairs({'vehicles','businesses','properties'}) do for id,v in pairs(raw[category]) do assert(v.id==migrated[category][id].id and v.owner==migrated[category][id].owner) end end;print('PASS Read-only migration of supplied legacy data: balances, jobs, bindings, asset IDs and ownership preserved')`);
+    }
+    assert.equal(failed,0);console.log(`Devtools total: ${passed} passed, ${failed} failed`);
   } finally { lua.global.close(); }
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

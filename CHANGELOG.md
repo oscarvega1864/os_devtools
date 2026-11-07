@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.3 — Identidad persistente y posiciones
+
+- Cuenta nativa, personaje activo, ID inmutable oschar y alias separados; resolución explícita por conexión, alias o char:ID. /setpj continúa retirado por la instrucción posterior de identidad automática.
+- Creación, selección de personajes propios y vinculación confirmada de personajes heredados sin cuenta. Permiso osdev.identity y perfil OSCAR identity separados de moderación/economía.
+- Conservación de economía, empleos, bienes, IDs, titularidades y HUD; pagos usan el resolutor común y propiedades admiten titular opcional desde la posición administrativa.
+- Migración validada del data.json actual, respaldo exacto y snapshots core.a/core.b alternos. No se reutilizan ni sobrescriben snapshots de borradores. Detección de corrupción, BOOL nativo 1 y verificación de escritura/relectura.
+- Posiciones de servidor por lotes: manual, cambio de personaje, desconexión, parada y aviso de apagado; última posición válida, logout y muerte independientes.
+- Eventos de muerte deduplicados con causa desconocida y respawn seguro mediante API oficial spawnmanager. Control por generaciones, confirmación autoritativa, timeout y un solo respaldo; modo external opcional.
+- Exports de identidad limitados a recursos lectores autorizados y evento local de cambio. El export heredado GetCharacterId sigue devolviendo alias.
+- 57 pruebas automatizadas Lua 5.4; códec de desarrollo y dkjson local. Migración de una copia existente verificada en modo lectura. Pendiente validación controlada en FiveM/OneSync con jugadores y spawnmanager.
+
 ## 0.1.3-pretest.1 — Autorización común OSCAR
 
 - Se conservan los cambios existentes de `0.1.3-pretest`: identidad automática,
