@@ -28,6 +28,15 @@ local controller=OSDevtools.SpawnClient.new({
         end)
     end
 })
+-- os_devtools es el unico dueno de la aparicion: si otro recurso (p. ej. basic-gamemode al
+-- iniciar un mapa) reactiva el autospawn y fuerza un respawn, spawnmanager llamara a este
+-- callback en lugar de spawnPlayer() y no movera al personaje a un punto del mapa.
+local function claimAutoSpawn()
+    if mode~='spawnmanager' or GetResourceState('spawnmanager')~='started' then return end
+    exports.spawnmanager:setAutoSpawnCallback(function() exports.spawnmanager:setAutoSpawn(false) end)
+    exports.spawnmanager:setAutoSpawn(false)
+end
+claimAutoSpawn()
 local function setup()
     if mode~='spawnmanager' or not NetworkIsSessionStarted() then return end
     if GetResourceState('spawnmanager')~='started' then
@@ -39,12 +48,19 @@ end
 RegisterNetEvent('osdev:spawnCharacter',function(context) if source==65535 and mode=='spawnmanager' then controller.receive(context) end end)
 RegisterNetEvent('osdev:spawnAccepted',function(token) if source==65535 then controller.accepted(token) end end)
 RegisterNetEvent('osdev:characterChanged',function() if source==65535 then TriggerServerEvent('osdev:requestHud') end end)
-AddEventHandler('onClientResourceStart',function(name) if name==GetCurrentResourceName() or name=='spawnmanager' then setup() end end)
+AddEventHandler('onClientResourceStart',function(name)
+    if name=='spawnmanager' then claimAutoSpawn() end
+    if name==GetCurrentResourceName() or name=='spawnmanager' then setup() end
+end)
 AddEventHandler('onClientResourceStop',function(name)
     if name=='spawnmanager' and mode=='spawnmanager' then controller.stop();return end
     if name~=GetCurrentResourceName() then return end
     controller.stop()
-    if mode=='spawnmanager' and GetResourceState('spawnmanager')=='started' then exports.spawnmanager:setAutoSpawn(true) end
+    if mode=='spawnmanager' and GetResourceState('spawnmanager')=='started' then
+        -- Devuelve el comportamiento por defecto y no deja una referencia a funcion caducada.
+        exports.spawnmanager:setAutoSpawnCallback(nil)
+        exports.spawnmanager:setAutoSpawn(true)
+    end
 end)
 CreateThread(function() while not NetworkIsSessionStarted() do Wait(250) end;setup() end)
 CreateThread(function()
