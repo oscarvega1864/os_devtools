@@ -118,3 +118,30 @@ CreateThread(function()
     Wait(500)
   end
 end)
+
+-- Restaurar posicion al primer spawn real de cada conexion, sin interferir en respawns.
+local firstSpawnProcessed=false
+AddEventHandler('playerSpawned',function()
+  if firstSpawnProcessed then return end
+  firstSpawnProcessed=true
+  TriggerServerEvent('osdev:requestSavedPosition')
+end)
+RegisterNetEvent('osdev:applySavedPosition',function(pos)
+  if type(pos)~='table' or type(pos.x)~='number' or type(pos.y)~='number' or type(pos.z)~='number' then return end
+  local ped=PlayerPedId()
+  if ped and ped~=0 and not IsEntityDead(ped) then
+    RequestCollisionAtCoord(pos.x,pos.y,pos.z)
+    SetEntityCoordsNoOffset(ped,pos.x,pos.y,pos.z,false,false,false)
+    SetEntityHeading(ped,tonumber(pos.h) or 0.0)
+  end
+end)
+local wasDead=false
+CreateThread(function()
+  while true do
+    Wait(1000)
+    local ped=PlayerPedId()
+    local dead=ped and ped~=0 and IsEntityDead(ped)
+    if dead and not wasDead then TriggerServerEvent('osdev:deathObserved') end
+    wasDead=dead
+  end
+end)

@@ -1,20 +1,27 @@
-# os_devtools — Herramientas de PRUEBA exclusivamente
+# OS Devtools 0.1.3-pretest.1 — Autorización OSCAR
 
-Recurso standalone orientado al FXServer local. **No instalar en servidores públicos o de producción**: es un banco de pruebas, no un framework RP ni una economía transaccional de producción. No incluye inventario ni integraciones con OS Security todavía.
+Recurso standalone orientado al FXServer local. **No instalar en servidores públicos o de producción**: es un banco de pruebas, no un framework RP ni una economía transaccional de producción. No incluye inventario.
+
+Se conserva la implementación `0.1.3-pretest` existente, incluida su identidad
+automática, HUD y posiciones. `/setpj` sigue retirado. La capa común de autorización
+admite ACE y delegaciones temporales explícitas sobre autenticación observada de
+txAdmin. OS Security dispone de un adaptador opcional tras verificar su contrato.
+Consultar [investigación, permisos y validación](docs/authorization.md).
 
 ## Instalación
 1. Copia la carpeta `os_devtools` a `resources/[local]/os_devtools`.
-2. Añade en `server.cfg` (antes del ensure):
+2. Para la vía ACE, la configuración tradicional es (no se modifica automáticamente):
    ```cfg
    add_ace group.admin osdev.admin allow
    ensure os_devtools
    ```
-3. Asegúrate de que tu licencia FiveM está en el grupo admin mediante la configuración ACE que ya utilices. Alternativamente, en entorno DEV, ejecuta `add_principal identifier.license:TU_LICENSE group.admin` (sustituyendo por tu identificador real, nunca compartas la licencia). Usa txAdmin/console para administrar.
+3. Alternativa sin altas individuales en `server.cfg`: autenticar al empleado en el menú de txAdmin y, desde su consola administrativa, ejecutar `osautorizar <id> <perfil> <minutos> CONFIRMAR`. La asignación es explícita porque txAdmin 8.1.2 no expone un export público de permisos granulares. El mero estado de administrador no concede acceso global.
 4. Conecta dos jugadores si quieres probar `/pagar` o `/ceder` entre personas.
-5. El recurso crea su propio `data.json`. Haz copias de seguridad. **No cambies el archivo con el recurso en marcha.**
+5. Se conserva el almacenamiento pretest en `data.json` y `data_backup.json`. La capa de autorización no migra esos archivos; sus delegaciones viven solo en RAM. **No editar datos en marcha ni mezclarlos con snapshots de prototipos anteriores.**
 
 ## Identidad
-- `/setpj 1 oscar_vega` asigna el personaje de prueba `oscar_vega` al jugador ID 1. No altera su identidad FiveM real.
+- Se mantiene la identidad automática pretest por `license` y las vinculaciones anteriores, incluido `oscar_vega`. La identidad de autorización es nativa y no depende del alias RP.
+- `/ospermisos` muestra diagnóstico propio y enmascarado. `osrevocar <id>` revoca una delegación, desde consola u `oscar.auth.manage`.
 - `/setjob oscar_vega gruppe6 vigilante`
 - `/setduty oscar_vega on`
 - `/dinero`: muestra **dinero en mano** y **banco**.
@@ -45,7 +52,7 @@ Recurso standalone orientado al FXServer local. **No instalar en servidores púb
 - `/infovehiculo 1`, `/infonegocio 1`, `/infopropiedad 200`.
 
 ## Alcance y limitaciones
-- Los comandos de administración usan `osdev.admin`, salvo `/pagar`, `/ceder`, `/dinero`, `/misbienes` y `/mispropiedades`, que requieren personaje registrado.
+- Los comandos administrativos usan permisos efectivos por operación: economía, empleos, activos o consultas. `osdev.admin` conserva acceso general a Devtools. `/pagar`, `/ceder`, `/dinero`, `/misbienes` y `/mispropiedades` siguen siendo personales.
 - Los precios de propiedades y negocios son metadatos; `/setpropiedad`, `/setnegocio` y `/setvehiculo` **asignan gratis** y no cobran.
 - Esta primera edición presenta listados en el chat, no NUI visual.
 - El sistema guarda un único JSON con escritura de recurso. Para alta concurrencia, compras con inventario, transacciones entre recursos o producción se necesita una base de datos con transacciones atómicas; **no usar este ejemplo como economía de producción**.
@@ -58,7 +65,7 @@ Recurso standalone orientado al FXServer local. **No instalar en servidores púb
 ## HUD (v0.1.1)
 - Aparece en la esquina superior derecha: **ID de sesión** de FiveM y **DINERO EN MANO** del personaje activo.
 - No muestra el dinero del banco. Se consulta con `/dinero`.
-- Al ejecutar `/setpj <id> <alias>` se vincula el personaje y aparece su efectivo.
+- Al resolver automáticamente la identidad se muestra el efectivo del personaje vinculado.
 - Si el usuario no tiene personaje activo, se muestra `--` en efectivo.
 - Se actualiza al cambiar el saldo, pagar o recibir un pago. Reconciliación cada 15 segundos.
 - `/hud` permite ocultar y volver a mostrar la interfaz en el cliente.
@@ -68,9 +75,20 @@ Recurso standalone orientado al FXServer local. **No instalar en servidores púb
 
 
 ## v0.1.2 — Conservación de comandos y diagnóstico de /pagar
-- Se mantienen todos los comandos de la v0.1.1 y sus nombres. Se añade `/oscomandos` como recordatorio en el chat.
+- Se conservan los comandos de economía, empleos y activos. `/setpj` está retirado en la versión pretest. `/oscomandos` muestra los comandos actuales.
 - `/pagar <idJugador|alias> <cantidad>` exige dos **personajes distintos registrados**. Si estás solo con el personaje `oscar_vega`, `/pagar oscar_vega 100` se rechazará correctamente.
-- Para preparar dos personajes de prueba con una sola cuenta, estando conectado como ID 1, ejecuta `/setpj 1 cliente_prueba`, después `/setpj 1 oscar_vega`. El alias `cliente_prueba` quedará registrado; usa `/pagar cliente_prueba 100` para enviarle efectivo sin estar conectado. Esta práctica es solo para el banco de pruebas.
+- Para probar pagos, conectar dos cuentas de prueba con identidad automática; también se conservan los pagos a alias registrados desconectados. `/pagar` nunca crea destinatarios nuevos.
 - Mensajes específicos si falta el personaje del destinatario, si el ID no está conectado, si faltan fondos o si se intenta pagar al propio personaje.
 - **Persistencia:** no se modifica el esquema de `data.json`. Antes de actualizar, haz copia de seguridad de tu archivo `data.json` en la instalación existente. No sustituir ni eliminar ese archivo; el paquete no incluye `data.json`.
 - Si el inventario se desarrolla después, no modificar los registros ni los comandos de este recurso sin pruebas de regresión.
+
+
+## 0.1.3-pretest (paquete de integración)
+- **No usar /setpj**: identidad por `license:` y conservacion de `bindings` anteriores. Las asociaciones antiguas no se reescriben.
+- `/ospermisos` consulta ACE del jugador real, no del principal introducido manualmente.
+- `/guardarpos`, `/ultimaubicacion`, `/setspawn <jugador|alias>` y ubicacion de muerte registrada por separado.
+- Restauracion de posicion en evento `playerSpawned` (requiere prueba con spawnmanager del servidor).
+- Exports GetCharacterId(playerSource) y GetCharacterByAlias(alias), para `os_inventory`.
+- **No concede ACE** por ser admin de txAdmin. Comprobar licencia real del jugador y `add_principal identifier.license:... group.admin`.
+- No contiene `data.json`: conservar el archivo existente del servidor y realizar copia antes de actualizar.
+- Quedan pendientes pruebas reales con jugadores, muerte, reconexion y reinicio. No utilizar en produccion.
