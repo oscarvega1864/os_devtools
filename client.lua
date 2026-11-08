@@ -1,16 +1,21 @@
-local function msg(text)
-  TriggerEvent('chat:addMessage',{color={90,205,135},args={'OS DEV',text}})
+-- Mensajes cortos: notificacion compacta si os_notify esta iniciado; si no, chat (sin dependencia).
+local function chat(text) TriggerEvent('chat:addMessage',{color={90,205,135},args={'OS DEV',text}}) end
+function OSDevtools.Notify(text,kind)
+  if GetResourceState('os_notify')=='started' then exports.os_notify:Notify(text,kind or 'info') else chat(text) end
 end
-RegisterNetEvent('osdev:msg',function(text) msg(text) end)
+local function msg(text,kind) OSDevtools.Notify(text,kind or (text:find('^Uso') and 'warning') or 'info') end
+RegisterNetEvent('osdev:msg',function(text,kind) if source==65535 and type(text)=='string' then msg(text,kind) end end)
+-- Listados y consultas: siempre al chat, donde se pueden leer y desplazar.
+RegisterNetEvent('osdev:list',function(text) if source==65535 and type(text)=='string' then chat(text) end end)
 RegisterNetEvent('osdev:own',function(vehicles,businesses,properties,alias,character)
-  msg(('Mis bienes · %s | Dinero en mano: $%d | Banco: $%d'):format(alias,character.cash or 0,character.bank or 0))
+  chat(('Mis bienes · %s | Dinero en mano: $%d | Banco: $%d'):format(alias,character.cash or 0,character.bank or 0))
   for _,category in ipairs({{'Vehiculos',vehicles},{'Negocios',businesses},{'Propiedades',properties}}) do
     local rows={}
     for id,item in pairs(category[2]) do
       if item.owner==alias then rows[#rows+1]=('#%s %s'):format(id,item.name or item.model or item.type or '') end
     end
     table.sort(rows)
-    msg(category[1]..': '..(#rows>0 and table.concat(rows,', ') or 'ninguno'))
+    chat(category[1]..': '..(#rows>0 and table.concat(rows,', ') or 'ninguno'))
   end
 end)
 local function applyLivery(vehicle,index,kind)

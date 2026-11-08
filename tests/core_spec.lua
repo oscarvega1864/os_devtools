@@ -363,3 +363,16 @@ test('npcs toggles persisted pedestrians and traffic independently of npc police
     restarted.command('npcs',1,{'on'});assert(restarted.snapshot().settings.ambientNpcs==true and restarted.snapshot().settings.npcPolice==false)
     local data=restarted.snapshot();data.settings.extra=true;assert(not OSDevtools.State.snapshot(data))
 end)
+
+test('Short results are typed notifications while listings and diagnostics go to the chat',function()
+    local c=fixture();local function find(name,source,pattern)
+        for _,m in ipairs(c.messages) do if m.name==name and m.source==source and m.args[1]:find(pattern,1,true) then return m end end
+    end
+    c.command('crearpropiedad',1,{'200','5'});assert(find('osdev:msg',1,'Propiedad #200 creada').args[2]=='success')
+    c.command('crearpropiedad',1,{'200','5'});assert(find('osdev:msg',1,'ya existe').args[2]=='error')
+    c.command('crearpropiedad',1,{});assert(find('osdev:msg',1,'Uso: /crearpropiedad').args[2]=='warning')
+    c.command('setmoney',2,{'1','5'});assert(find('osdev:msg',2,'Sin autorizacion').args[2]=='error')
+    c.command('misbienes',1);assert(find('osdev:list',1,'Propiedades:') and not find('osdev:msg',1,'Propiedades:'))
+    c.command('oscomandos',1);assert(find('osdev:list',1,'PERSONAJE:'))
+    c.command('personaje',1);assert(find('osdev:list',1,'oscar_vega'))
+end)

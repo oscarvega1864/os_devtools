@@ -29,9 +29,16 @@ end)
 AddEventHandler('playerDropped',function() lastHudRequest[source]=nil end)
 
 
-local function out(src, msg)
-  if src == 0 then print('[os_devtools] '..msg)
-  else TriggerClientEvent('osdev:msg',src,msg) end
+-- Mensaje corto: notificacion (os_notify) o chat. Tipo: info | success | warning | error;
+-- sin tipo, una linea de uso se marca como aviso.
+local function out(src, msg, kind)
+  if src == 0 then return print('[os_devtools] '..msg) end
+  TriggerClientEvent('osdev:msg',src,msg,kind or (msg:find('^Uso') and 'warning') or 'info')
+end
+-- Listados y consultas largas: siempre al chat, donde se pueden leer y desplazar.
+local function list(src, msg)
+  if src == 0 then return print('[os_devtools] '..msg) end
+  TriggerClientEvent('osdev:list',src,msg)
 end
 local function integer(x)
   local n=tonumber(x)
@@ -55,7 +62,7 @@ end
 local function clone(t) return OSDevtools.Util.copy(t) end
 local function action(src,label,fn)
   local ok,err=core.change(src,label,fn)
-  if not ok then out(src,err or 'Operacion no confirmada.') end
+  if not ok then out(src,err or 'Operacion no confirmada.','error') end
   return ok
 end
 local function characterFor(src) return core and core.ensure(src) end
@@ -81,20 +88,20 @@ local function assetLabel(category,id,record)
 end
 local function needAdmin(src,permission)
   permission=permission or 'osdev.admin'
-  if not ready then out(src,'Registro no disponible; revisar almacenamiento.');return false end
+  if not ready then out(src,'Registro no disponible; revisar almacenamiento.','error');return false end
   if admin(src,permission) then return true end
   OSDevtools.AuthDenied(src,permission)
-  out(src,'Sin autorizacion efectiva '..permission..'. Consulta /ospermisos.');return false
+  out(src,'Sin autorizacion efectiva '..permission..'. Consulta /ospermisos.','error');return false
 end
 local function exists(src)
   local alias=characterFor(src)
-  if not alias or not state.characters[alias] then out(src,'No se pudo resolver tu identidad. Comprueba tu license y la persistencia del recurso.'); return nil end
+  if not alias or not state.characters[alias] then out(src,'No se pudo resolver tu identidad. Comprueba tu license y la persistencia del recurso.','error'); return nil end
   return alias
 end
 local function showCharacter(src,alias)
   local c=state.characters[alias]
   if not c then return end
-  out(src, ('Personaje %s | Dinero en mano: $%d | Banco: $%d | Job: %s (%s) | Servicio: %s'):format(alias,c.cash or 0,c.bank or 0,c.job or 'ninguno',c.rank or '-',c.duty and 'SI' or 'NO'))
+  list(src, ('Personaje %s | Dinero en mano: $%d | Banco: $%d | Job: %s (%s) | Servicio: %s'):format(alias,c.cash or 0,c.bank or 0,c.job or 'ninguno',c.rank or '-',c.duty and 'SI' or 'NO'))
 end
 
 -- /setpj eliminado: identidad automatica por license y migracion conservadora.
@@ -115,7 +122,7 @@ RegisterCommand('misbienes',function(src)
       if v.owner==alias then found[#found+1] = ('#%s %s%s'):format(id,assetLabel(category[2],id,v),v.fixed==false and ' (temporal)' or '') end
     end
     table.sort(found)
-    out(src,category[1]..': '..(#found>0 and table.concat(found,', ') or 'ninguno'))
+    list(src,category[1]..': '..(#found>0 and table.concat(found,', ') or 'ninguno'))
   end
 end,false)
 RegisterCommand('mispropiedades',function(src)
@@ -136,7 +143,7 @@ RegisterCommand('verpropiedades',function(src,args)
   for _,cat in ipairs({{'Vehiculos','vehicles'},{'Negocios','businesses'},{'Propiedades','properties'}}) do
     local results={}
     for id,v in pairs(state[cat[2]]) do if v.owner==alias then results[#results+1]=id..':'..assetLabel(cat[2],id,v) end end
-    out(src,cat[1]..': '..(#results>0 and table.concat(results,', ') or 'ninguno'))
+    list(src,cat[1]..': '..(#results>0 and table.concat(results,', ') or 'ninguno'))
   end
 end,false)
 
@@ -144,7 +151,7 @@ RegisterCommand('setmoney',function(src,args)
   if not needAdmin(src,'osdev.economy') then return end
   local who=resolve(args[1]); local amount=money(args[2]); local account=args[3] or 'cash'
   if not who or amount==nil or (account~='cash' and account~='bank') then return out(src,'Uso: /setmoney <idJugador|alias> <cantidad> [cash|bank]') end
-  if action(src,'setmoney '..who..' '..account..' '..amount,function(d) d.characters[who][account]=amount; return true end) then out(src,'Saldo '..account..' de '..who..': $'..amount) end
+  if action(src,'setmoney '..who..' '..account..' '..amount,function(d) d.characters[who][account]=amount; return true end) then out(src,'Saldo '..account..' de '..who..': $'..amount,'success') end
 end,false)
 RegisterCommand('givemoney',function(src,args)
   if not needAdmin(src,'osdev.economy') then return end
@@ -153,7 +160,7 @@ RegisterCommand('givemoney',function(src,args)
   if action(src,'givemoney '..who..' '..account..' '..amount,function(d)
     if d.characters[who][account]+amount>2147483647 then return false,'Saldo fuera de rango.' end
     d.characters[who][account]=d.characters[who][account]+amount;return true
-  end) then out(src,'Añadidos $'..amount..' a '..who) end
+  end) then out(src,'Añadidos $'..amount..' a '..who,'success') end
 end,false)
 RegisterCommand('removemoney',function(src,args)
   if not needAdmin(src,'osdev.economy') then return end
@@ -162,7 +169,7 @@ RegisterCommand('removemoney',function(src,args)
   if action(src,'removemoney '..who..' '..account..' '..amount,function(d)
     if d.characters[who][account]<amount then return false,'Fondos insuficientes.' end
     d.characters[who][account]=d.characters[who][account]-amount;return true
-  end) then out(src,'Retirados $'..amount..' a '..who) end
+  end) then out(src,'Retirados $'..amount..' a '..who,'success') end
 end,false)
 -- Transferencias de efectivo entre personajes. No depende del job ni de ACE.
 -- El destino puede ser un jugador conectado (server ID) o un alias registrado,
@@ -176,8 +183,8 @@ RegisterCommand('pagar',function(src,args)
     return out(src,'Uso: /pagar <idJugador|personaje> <cantidad>. Ejemplo: /pagar 2 100')
   end
   local to,resolveError=core.resolve(target)
-  if not to then return out(src,resolveError or 'Destinatario no disponible. Usa idJugador, alias:ALIAS o char:ID.') end
-  if from==to then return out(src,'No puedes pagarte a ti mismo. Para pruebas usa /setmoney o /givemoney.') end
+  if not to then return out(src,resolveError or 'Destinatario no disponible. Usa idJugador, alias:ALIAS o char:ID.','error') end
+  if from==to then return out(src,'No puedes pagarte a ti mismo. Para pruebas usa /setmoney o /givemoney.','error') end
   if action(src,('pagar %s -> %s $%d'):format(from,to,amount),function(d)
     local sender=d.characters[from]
     local receiver=d.characters[to]
@@ -188,11 +195,11 @@ RegisterCommand('pagar',function(src,args)
     receiver.cash=(receiver.cash or 0)+amount
     return true
   end) then
-    out(src,('Pago completado: has enviado $%d a %s.'):format(amount,to))
+    out(src,('Pago completado: has enviado $%d a %s.'):format(amount,to),'success')
     for _,playerId in ipairs(GetPlayers()) do
       local n=tonumber(playerId)
       if n~=src and characterFor(n)==to then
-        out(n,('Has recibido $%d en efectivo de %s.'):format(amount,from))
+        out(n,('Has recibido $%d en efectivo de %s.'):format(amount,from),'success')
       end
     end
   end
@@ -204,14 +211,14 @@ RegisterCommand('ospermisos',function(src)
   local principal=OSDevtools.AuthIdentity.resolve(src)
   local tx=OSDevtools.AuthHub.status(src)
   local ace=IsPlayerAceAllowed(src,'osdev.admin');local general=IsPlayerAceAllowed(src,'command')
-  out(src,('Sesion %d | identidad %s | ACE osdev.admin=%s | ACE general command=%s'):format(src,OSDevtools.AuthIdentity.mask(principal),tostring(ace==true or ace==1),tostring(general==true or general==1)))
-  out(src,('txAdmin compatible=%s | autenticado=%s | perfil temporal=%s | almacenamiento=%s | personaje=%s'):format(tostring(tx.txCompatible),tostring(tx.authenticated),tx.profile or 'ninguno',tostring(ready),tostring(characterFor(src) or 'no disponible')))
+  list(src,('Sesion %d | identidad %s | ACE osdev.admin=%s | ACE general command=%s'):format(src,OSDevtools.AuthIdentity.mask(principal),tostring(ace==true or ace==1),tostring(general==true or general==1)))
+  list(src,('txAdmin compatible=%s | autenticado=%s | perfil temporal=%s | almacenamiento=%s | personaje=%s'):format(tostring(tx.txCompatible),tostring(tx.authenticated),tx.profile or 'ninguno',tostring(ready),tostring(characterFor(src) or 'no disponible')))
   local scopes={}
   for _,scope in ipairs({'osdev.admin','osdev.economy','osdev.jobs','osdev.assets','osdev.inspect','osdev.identity','ossecurity.admin','osinventory.admin'}) do
     local allowed,provider=OSDevtools.AuthHub.can(src,scope)
     scopes[#scopes+1]=scope..'='..tostring(allowed)..' ('..provider..')'
   end
-  out(src,table.concat(scopes,' | '))
+  list(src,table.concat(scopes,' | '))
 end,false)
 RegisterCommand('oscomandos',function(src)
   local lines={
@@ -221,24 +228,24 @@ RegisterCommand('oscomandos',function(src)
     'VEHICULOS: /recuperarvehiculo, /setcolor, /setlivery, /listliveries, /listvehiculos, /infovehiculo',
     'CONSULTA: /listnegocios, /infonegocio, /listpropiedades, /infopropiedad'
   }
-  for _,line in ipairs(lines) do out(src,line) end
-  out(src,'PERSONAJES: /personaje [alias|char:id]; ADMIN: /crearpersonaje, /seleccionarpersonaje, /vincularpersonaje. /setpj retirado.')
-  out(src,'POSICION: /guardarpos, /ultimaubicacion; ADMIN: /setspawn <destinatario>, /tpusuario <id>.')
-  out(src,'APARIENCIA: se guarda sola al cambiar; /guardarropa la guarda al momento.')
-  out(src,'MUNDO: /policianpc [on|off] y /npcs [on|off] (admin) activan o desactivan policia NPC y peatones/trafico.')
+  for _,line in ipairs(lines) do list(src,line) end
+  list(src,'PERSONAJES: /personaje [alias|char:id]; ADMIN: /crearpersonaje, /seleccionarpersonaje, /vincularpersonaje. /setpj retirado.')
+  list(src,'POSICION: /guardarpos, /ultimaubicacion; ADMIN: /setspawn <destinatario>, /tpusuario <id>.')
+  list(src,'APARIENCIA: se guarda sola al cambiar; /guardarropa la guarda al momento.')
+  list(src,'MUNDO: /policianpc [on|off] y /npcs [on|off] (admin) activan o desactivan policia NPC y peatones/trafico.')
 end,false)
 
 RegisterCommand('setjob',function(src,args)
   if not needAdmin(src,'osdev.jobs') then return end
   local who=resolve(args[1]);local job=args[2];local rank=args[3] or 'empleado'
   if not who or not validAlias(job) or not validAlias(rank) then return out(src,'Uso: /setjob <idJugador|alias> <job> <rango>') end
-  if action(src,'setjob',function(d) local c=d.characters[who];c.job=job;c.rank=rank;c.duty=false;return true end) then out(src,'Job actualizado: '..who..' -> '..job..'/'..rank) end
+  if action(src,'setjob',function(d) local c=d.characters[who];c.job=job;c.rank=rank;c.duty=false;return true end) then out(src,'Job actualizado: '..who..' -> '..job..'/'..rank,'success') end
 end,false)
 RegisterCommand('setduty',function(src,args)
   if not needAdmin(src,'osdev.jobs') then return end
   local who=resolve(args[1]); local val=args[2]
   if not who or (val~='on' and val~='off') then return out(src,'Uso: /setduty <idJugador|alias> on|off') end
-  if action(src,'setduty',function(d) d.characters[who].duty=(val=='on');return true end) then out(src,'Duty de '..who..': '..val) end
+  if action(src,'setduty',function(d) d.characters[who].duty=(val=='on');return true end) then out(src,'Duty de '..who..': '..val,'success') end
 end,false)
 
 -- Nombre de negocio: varias palabras, 3-40 bytes, sin codigos de formato de GTA (~) ni etiquetas.
@@ -333,13 +340,13 @@ RegisterCommand('crearpropiedad',function(src,args)
   if not needAdmin(src,'osdev.assets') then return end
   local id=positive(args[1]);local price=money(args[2])
   if #args~=2 or not id or id>2147483646 or price==nil then return out(src,'Uso: /crearpropiedad <numero> <precio>. Ejemplo: /crearpropiedad 200 50000') end
-  if state.properties[tostring(id)] then return out(src,'La propiedad ID '..id..' ya existe.') end
+  if state.properties[tostring(id)] then return out(src,'La propiedad ID '..id..' ya existe.','error') end
   local pos=getCoords(src);if not pos then return out(src,'Debes ejecutar este comando dentro del juego, en un bucket permitido.') end
   if action(src,'create property '..id,function(d)
     if d.properties[tostring(id)] then return false,'La propiedad ID '..id..' ya existe.' end
     d.properties[tostring(id)]={id=id,price=price,position=pos}
     return true
-  end) then out(src,('Propiedad #%d creada en tus coordenadas por $%d. Sin propietario: /setpropiedad %d <destinatario>.'):format(id,price,id)) end
+  end) then out(src,('Propiedad #%d creada en tus coordenadas por $%d. Sin propietario: /setpropiedad %d <destinatario>.'):format(id,price,id),'success') end
 end,false)
 -- /crearnegocio <tipo> <nombre> <precio>: ID automatico, sin titular, blip segun la categoria.
 RegisterCommand('crearnegocio',function(src,args)
@@ -355,7 +362,7 @@ RegisterCommand('crearnegocio',function(src,args)
     if d.businesses[tostring(id)] then return false,'ERROR: El ID '..id..' ya existe.' end
     d.businesses[tostring(id)]={id=id,type=kind,name=name,price=price,position=pos}
     return true
-  end) then out(src,('Negocio #%d "%s" (%s) creado en tus coordenadas por $%d. Sin propietario: /setnegocio %d <destinatario>.'):format(id,name,OSDevtools.BusinessTypes[kind].label,price,id)) end
+  end) then out(src,('Negocio #%d "%s" (%s) creado en tus coordenadas por $%d. Sin propietario: /setnegocio %d <destinatario>.'):format(id,name,OSDevtools.BusinessTypes[kind].label,price,id),'success') end
 end,false)
 local function assign(kind,src,args)
   if not needAdmin(src,'osdev.assets') then return end
@@ -364,7 +371,7 @@ local function assign(kind,src,args)
   if action(src,'assign '..kind,function(d)
     local obj=d[kind][tostring(id)];if not obj then return false,'No existe ese ID en esta categoria.' end
     obj.owner=who;return true
-  end) then out(src,'Asignado '..kind..' #'..id..' a '..ownerLabel(who)) end
+  end) then out(src,'Asignado '..kind..' #'..id..' a '..ownerLabel(who),'success') end
 end
 RegisterCommand('setpropiedad',function(src,args) assign('properties',src,args) end,false)
 RegisterCommand('setnegocio',function(src,args) assign('businesses',src,args) end,false)
@@ -374,12 +381,12 @@ local function listCategory(category,src,args)
   local id=positive(args[1]);local d=state[category]
   if id then
     local obj=d[tostring(id)]
-    return out(src,obj and json.encode(obj) or 'ID inexistente.')
+    return list(src,obj and json.encode(obj) or 'ID inexistente.')
   end
   local ids={};for k in pairs(d) do ids[#ids+1]=tonumber(k) end; table.sort(ids)
-  if #ids==0 then return out(src,'No hay registros.') end
+  if #ids==0 then return list(src,'No hay registros.') end
   for _,k in ipairs(ids) do
-    local obj=d[tostring(k)];out(src,('#%d %s | %s'):format(k,assetLabel(category,k,obj),ownerLabel(obj.owner)))
+    local obj=d[tostring(k)];list(src,('#%d %s | %s'):format(k,assetLabel(category,k,obj),ownerLabel(obj.owner)))
   end
 end
 for command,cat in pairs({listvehiculos='vehicles',listnegocios='businesses',listpropiedades='properties',infovehiculo='vehicles',infonegocio='businesses',infopropiedad='properties'}) do
@@ -402,7 +409,7 @@ RegisterCommand('crearvehiculo',function(src,args)
   local point=ahead(pos)
   vehicles.inspect(src,{model},function(types)
     local vtype=types and types[model]
-    if not vtype then return out(src,'Modelo de vehiculo invalido o no disponible en tu cliente: '..model..'. No se registra nada.') end
+    if not vtype then return out(src,'Modelo de vehiculo invalido o no disponible en tu cliente: '..model..'. No se registra nada.','error') end
     local id,plate
     if not action(src,'create vehicle',function(d)
       id=d.nextVehicle;d.nextVehicle=id+1;plate=('OS%06d'):format(id)
@@ -410,8 +417,8 @@ RegisterCommand('crearvehiculo',function(src,args)
       return true
     end) then return end
     local entity,err=vehicles.spawn(id,state.vehicles[tostring(id)],point)
-    if entity then out(src,('Vehiculo #%d (%s, %s) creado delante de ti. Matricula %s.'):format(id,model,mode,plate))
-    else out(src,('Vehiculo #%d registrado, pero %s Reintenta con /recuperarvehiculo %d.'):format(id,err,id)) end
+    if entity then out(src,('Vehiculo #%d (%s, %s) creado delante de ti. Matricula %s.'):format(id,model,mode,plate),'success')
+    else out(src,('Vehiculo #%d registrado, pero %s Reintenta con /recuperarvehiculo %d.'):format(id,err,id),'error') end
   end)
 end,false)
 -- Completa el tipo de modelo de vehiculos registrados preguntando a un administrador conectado.
@@ -453,18 +460,18 @@ RegisterCommand('recuperarvehiculo',function(src,args)
   if not needAdmin(src,'osdev.assets') then return end
   local id=positive(args[1]);local v=id and state.vehicles[tostring(id)]
   if not v then return out(src,'Uso: /recuperarvehiculo <idExistente>') end
-  if vehicles.find(id,v) then return out(src,'El vehiculo #'..id..' ya existe en el mundo; no se duplica.') end
+  if vehicles.find(id,v) then return out(src,'El vehiculo #'..id..' ya existe en el mundo; no se duplica.','warning') end
   local pos=getCoords(src);if not pos then return out(src,'Ejecuta desde el juego, en un bucket permitido.') end
   local function here()
     local record=state.vehicles[tostring(id)];local point=ahead(pos)
     local entity,err=vehicles.spawn(id,record,point)
-    if not entity then return out(src,err) end
+    if not entity then return out(src,err,'error') end
     if record.fixed then core.change(src,'vehicle recovered '..id,function(d) d.vehicles[tostring(id)].position=point;return true end) end
-    out(src,'Vehiculo #'..id..' recuperado delante de ti.')
+    out(src,'Vehiculo #'..id..' recuperado delante de ti.','success')
   end
   if v.vtype then return here() end
   completeTypes(src,{id},function(ok)
-    if ok or state.vehicles[tostring(id)].vtype then here() else out(src,'No se pudo determinar el tipo del modelo '..v.model..'.') end
+    if ok or state.vehicles[tostring(id)].vtype then here() else out(src,'No se pudo determinar el tipo del modelo '..v.model..'.','error') end
   end)
 end,false)
 RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,livery,liveryType)
@@ -474,7 +481,7 @@ RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,live
   if veh==0 or not DoesEntityExist(veh) or GetPedInVehicleSeat(veh,-1)~=GetPlayerPed(src) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return end
   local found
   for id,v in pairs(state.vehicles) do if v.plate==plate then found=id;break end end
-  if not found then return out(src,'Este vehiculo no lo gestiona os_devtools (p. ej. creado con vMenu): color/livery no guardados. Usa /crearvehiculo para uno persistente.') end
+  if not found then return out(src,'Este vehiculo no lo gestiona os_devtools (p. ej. creado con vMenu): color/livery no guardados. Usa /crearvehiculo para uno persistente.','warning') end
   if primary~=nil and (not integer(primary) or primary>159 or not integer(secondary) or secondary>159) then return end
   if livery~=nil and (not integer(livery) or livery>255 or (liveryType~='native' and liveryType~='mod48')) then return end
   if action(src,'vehicle appearance',function(d)
@@ -484,7 +491,7 @@ RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,live
     return true
   end) then
     vehicles.refreshLook(tonumber(found),state.vehicles[found])
-    out(src,'Aspecto guardado para vehiculo #'..found)
+    out(src,'Aspecto guardado para vehiculo #'..found,'success')
   end
 end)
 
@@ -497,11 +504,11 @@ RegisterNetEvent('osdev:cederVehicle',function(target,plate)
   if veh==0 or not DoesEntityExist(veh) or GetPedInVehicleSeat(veh,-1)~=GetPlayerPed(src) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return out(src,'Debes conducir el vehiculo indicado.') end
   local found
   for id,v in pairs(state.vehicles) do if v.plate==plate then found=id;break end end
-  if not found then return out(src,'Este vehiculo no esta registrado en os_devtools.') end
-  if state.vehicles[found].owner~=from then return out(src,'No eres el propietario de este vehiculo.') end
+  if not found then return out(src,'Este vehiculo no esta registrado en os_devtools.','error') end
+  if state.vehicles[found].owner~=from then return out(src,'No eres el propietario de este vehiculo.','error') end
   if action(src,'ceder vehicle',function(d) d.vehicles[found].owner=to;return true end) then
-    out(src,'Vehiculo #'..found..' cedido a '..to)
-    for _,id in ipairs(GetPlayers()) do if characterFor(tonumber(id))==to then out(tonumber(id),'Has recibido el vehiculo #'..found) end end
+    out(src,'Vehiculo #'..found..' cedido a '..to,'success')
+    for _,id in ipairs(GetPlayers()) do if characterFor(tonumber(id))==to then out(tonumber(id),'Has recibido el vehiculo #'..found,'success') end end
   end
 end)
 for command,event in pairs({setcolor='osdev:doSetColor',setlivery='osdev:doSetLivery',listliveries='osdev:doListLiveries'}) do
@@ -557,7 +564,7 @@ vehicles=OSDevtools.Vehicles.new({state=function() return state end,change=core.
 OSDevtools.VehicleRuntime=vehicles
 local loaded,loadError=core.start()
 if not loaded then print('[os_devtools] Registro bloqueado: '..tostring(storageError or loadError)) end
-OSDevtools.bindCore({core=core,reply=out,guard=needAdmin})
+OSDevtools.bindCore({core=core,reply=out,list=list,guard=needAdmin})
 if loaded then
   for _,id in ipairs(GetPlayers()) do local alias,err=core.ensure(tonumber(id));if not alias then out(tonumber(id),err) end end
   print('[os_devtools] 0.1.3 listo. Datos conservados; /setpj permanece retirado.')

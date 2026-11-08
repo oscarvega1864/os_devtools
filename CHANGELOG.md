@@ -7,6 +7,7 @@
 - Vehículos creados por el servidor (OneSync, `CREATE_VEHICLE_SERVER_SETTER`) tras comprobar el tipo del modelo; corrige "sin entidad de red". Los fijos guardan su posición y se recrean tras reiniciar el servidor, sin duplicarse; aspecto por state bag. Fijos antiguos completan su tipo al entrar un administrador.
 - `/policianpc on|off`: ajuste persistente que desactiva estrellas, persecuciones y despachos policiales/militares de GTA para todos los jugadores, sin borrar entidades ni tocar ambulancias, bomberos o bandas.
 - `/npcs on|off`: ajuste persistente que quita peatones, tráfico y coches aparcados de GTA para todos los jugadores, sin borrar entidades existentes.
+- Mensajes: confirmaciones y errores como notificaciones de `os_notify` (opcional, con vuelta al chat); listados siempre al chat. Sugerencias con ayuda y parámetros para todos los comandos.
 - `importarropa`: importación auditada de XML de Menyoo (OutfitPedData) desde `data/`, con aplicación inmediata al jugador conectado.
 - Devtools es el único dueño del autospawn de spawnmanager: un gametype que fuerce respawn ya no mueve al personaje ni cambia su modelo.
 

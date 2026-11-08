@@ -38,6 +38,12 @@ Ejemplos: `/setmoney 2 5000 bank`, `/setjob oscar_vega gruppe6 vigilante`, `/set
 
 Los comandos físicos utilizan la posición del administrador; el destinatario solo decide la titularidad. Los vehículos siguen generándose mediante cliente autorizado, con colores, liveries, matrícula e ID del registro. La recuperación bloquea peticiones simultáneas del mismo registro. Sus registros, incluidos los temporales, se conservan sin reciclar IDs; las entidades temporales conocidas se retiran al detener el recurso. Los fijos no reaparecen automáticamente tras reiniciar. Un servidor con entity lockdown estricto necesita un adaptador de creación autorizado desde servidor.
 
+## Mensajes
+
+- Confirmaciones, errores y avisos cortos se muestran como notificación compacta si `os_notify` está iniciado (éxito, error, aviso o información); si no, en el chat. No es una dependencia obligatoria.
+- Listados y diagnósticos (`/misbienes`, `/oscomandos`, `/ospermisos`, `/list*`, `/info*`, `/personaje`, `/ultimaubicacion`, `/dinero`) van siempre al chat.
+- Todos los comandos tienen sugerencia con ayuda y parámetros al escribir `/` (`client/suggestions.lua`).
+
 ## Propiedades y negocios
 
 - `/crearpropiedad <numero> <precio>`: el administrador elige el número; se guardan precio, coordenadas exactas y heading, sin nombre, tipo ni propietario. Etiqueta visible `Propiedad #200`. Un número existente se rechaza con `La propiedad ID 200 ya existe.` Las propiedades antiguas conservan su tipo y nombre.

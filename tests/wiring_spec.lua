@@ -94,7 +94,7 @@ local function fixture(files,behavior)
         a=a and OSDevtools.JsonCodec.decode(a);b=b and OSDevtools.JsonCodec.decode(b)
         return a and b and (a.revision>b.revision and a or b) or a or b or json.decode(c.files['data.json'])
     end
-    function c.text(source) local result={};for _,msg in ipairs(c.messages) do if msg.source==source and msg.name=='osdev:msg' then result[#result+1]=msg.args[1] end end;return table.concat(result,'\n') end
+    function c.text(source) local result={};for _,msg in ipairs(c.messages) do if msg.source==source and (msg.name=='osdev:msg' or msg.name=='osdev:list') then result[#result+1]=msg.args[1] end end;return table.concat(result,'\n') end
     return c
 end
 test('All Lua syntax and actual manifest paths load while preserving pretest position commands',function()

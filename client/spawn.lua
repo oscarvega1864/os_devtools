@@ -13,7 +13,7 @@ local controller=OSDevtools.SpawnClient.new({
     ack=function(token) TriggerServerEvent('osdev:characterSpawned',token) end,
     failed=function(token) TriggerServerEvent('osdev:spawnFailed',token) end,
     release=release,
-    notify=function(text) TriggerEvent('chat:addMessage',{args={'OS DEV',text}}) end,
+    notify=function(text) OSDevtools.Notify(text,'error') end,
     spawn=function(point,callback,isCurrent,context)
         if GetResourceState('spawnmanager')~='started' then callback(false);return end
         local appearance=OSDevtools.Appearance
@@ -61,7 +61,7 @@ claimAutoSpawn()
 local function setup()
     if mode~='spawnmanager' or not NetworkIsSessionStarted() then return end
     if GetResourceState('spawnmanager')~='started' then
-        TriggerEvent('chat:addMessage',{args={'OS DEV','Falta spawnmanager; iniciar antes de os_devtools o configurar Mode=external.'}})
+        OSDevtools.Notify('Falta spawnmanager; iniciar antes de os_devtools o configurar Mode=external.','error')
         return
     end
     exports.spawnmanager:setAutoSpawn(false);TriggerServerEvent('osdev:requestCharacterSpawn')

@@ -125,7 +125,7 @@ function Appearance.settled(plan)
     Appearance.last=Appearance.signature(Appearance.capture(PlayerPedId()))
     Appearance.ready=true
     if plan.locked then
-        TriggerEvent('chat:addMessage',{args={'OS DEV','Tu modelo guardado no esta disponible; se conservan sus datos. Usa /guardarropa para sustituirlos por el aspecto actual.'}})
+        OSDevtools.Notify('Tu modelo guardado no esta disponible; se conservan sus datos. Usa /guardarropa para sustituirlos por el aspecto actual.','warning')
     end
 end
 
@@ -136,7 +136,7 @@ RegisterNetEvent('osdev:applyAppearance',function(data)
         while Appearance.spawning do Wait(250) end
         local plan=Appearance.plan(data)
         if plan.locked or not Appearance.setModel(plan) then
-            TriggerEvent('chat:addMessage',{args={'OS DEV','El modelo importado no esta disponible en este cliente; datos conservados en el servidor.'}})
+            OSDevtools.Notify('El modelo importado no esta disponible en este cliente; datos conservados en el servidor.','error')
             return
         end
         Appearance.apply(PlayerPedId(),plan)
@@ -153,7 +153,6 @@ RegisterCommand('guardarropa',function()
 end,false)
 
 CreateThread(function()
-    TriggerEvent('chat:addSuggestion','/guardarropa','Guarda la ropa y el aspecto actuales en tu personaje')
     while true do
         Wait(10000)
         local ped=PlayerPedId()
