@@ -122,6 +122,13 @@ test('Identity exports preserve the legacy alias contract while providing stable
     assert(c.exports.GetCharacterId(1)=='oscar_vega' and c.exports.ResolveCharacter('char:'..dto.characterId).alias=='oscar_vega')
     c.origin='untrusted';assert(not c.exports.GetActiveCharacter(1))
 end)
+test('Active employment export reflects setjob/setduty for trusted readers only and exposes no account data',function()
+    local c=fixture();c.origin='os_security'
+    local e=c.exports.GetActiveEmployment(1);assert(e.job=='gruppe6' and e.rank=='vigilante' and e.duty==false and e.characterId:match('^oschar_') and not e.account)
+    c.origin=nil;c.command('setjob',1,{'1','gruppe6','tecnico'});c.command('setduty',1,{'1','on'})
+    c.origin='os_security';e=c.exports.GetActiveEmployment(1);assert(e.job=='gruppe6' and e.rank=='tecnico' and e.duty==true)
+    c.origin='untrusted';assert(not c.exports.GetActiveEmployment(1))
+end)
 test('Corrupt legacy or snapshot files remain untouched and block all writes',function()
     local c=fixture({['data.json']='{corrupt'});local before=c.writes;c.command('setmoney',1,{'2','1'});assert(c.writes==before and c.files['data.json']=='{corrupt')
     c=fixture();local files=c.files;files['data/core.b.json']='{corrupt'
@@ -271,6 +278,16 @@ test('Business blips reach every player on change, on request, and are not resen
     local _,index=last(2);c.core.savePositions({1,2},'manual',true);local _,after=last(2);assert(index==after)
     c.clock=c.clock+6000;source=2;c.net['osdev:requestBusinessBlips']();local _,requested=last(2);assert(requested>after)
     source=2;c.net['osdev:requestBusinessBlips']();local _,limited=last(2);assert(limited==requested)
+end)
+test('Property blips show number:owner or number:price and follow creation and assignment',function()
+    local c=fixture();local function last(source)
+        for i=#c.messages,1,-1 do local m=c.messages[i];if m.name=='osdev:businessBlips' and m.source==source then return m.args[2] end end
+    end
+    local function find(list,id) for _,p in ipairs(list or {}) do if p.id==id then return p end end end
+    c.command('crearpropiedad',1,{'200','50000'})
+    local p=find(last(2),200);assert(p and p.type=='sale' and p.name=='200: $50.000' and p.x==10)
+    c.command('setpropiedad',1,{'200','oscar_vega'})
+    p=find(last(2),200);assert(p and p.type=='owned' and p.name=='200: oscar_vega')
 end)
 test('Legacy properties with type and name remain valid and keep their metadata',function()
     local data=legacy();data.properties['7']={id=7,type='casa',name='villa',price=30,position={x=1,y=2,z=3,h=0,bucket=0}}

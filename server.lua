@@ -266,17 +266,36 @@ local function businessBlips()
   table.sort(list,function(a,b) return a.id<b.id end)
   return list
 end
-local function signatureOf(list)
-  local parts={};for _,b in ipairs(list) do parts[#parts+1]=table.concat({b.id,b.type,b.name,b.x,b.y,b.z},'|') end
+-- Propiedades: "numero: propietario" si tiene titular, "numero: $precio" si esta a la venta.
+local function thousands(value) return tostring(math.floor(value)):reverse():gsub('(%d%d%d)','%1.'):reverse():gsub('^%.','') end
+local function propertyBlips()
+  local list={}
+  for id,p in pairs(state.properties) do
+    if p.position and tonumber(id) then
+      local owned=p.owner~=nil and state.characters[p.owner]~=nil
+      list[#list+1]={id=tonumber(id),type=owned and 'owned' or 'sale',
+        name=('%d: %s'):format(tonumber(id),owned and p.owner or ('$'..thousands(p.price or 0))),
+        x=p.position.x,y=p.position.y,z=p.position.z}
+    end
+  end
+  table.sort(list,function(a,b) return a.id<b.id end)
+  return list
+end
+local function signatureOf(...)
+  local parts={}
+  for _,list in ipairs({...}) do
+    for _,b in ipairs(list) do parts[#parts+1]=table.concat({b.id,b.type,b.name,b.x,b.y,b.z},'|') end
+    parts[#parts+1]='#'
+  end
   return table.concat(parts,';')
 end
 local function pushBlips(target)
-  local list=businessBlips()
-  if target then return TriggerClientEvent('osdev:businessBlips',target,list) end
-  local signature=signatureOf(list)
+  local list,properties=businessBlips(),propertyBlips()
+  if target then return TriggerClientEvent('osdev:businessBlips',target,list,properties) end
+  local signature=signatureOf(list,properties)
   if signature==blipSignature then return end
   blipSignature=signature
-  for _,id in ipairs(GetPlayers()) do TriggerClientEvent('osdev:businessBlips',tonumber(id),list) end
+  for _,id in ipairs(GetPlayers()) do TriggerClientEvent('osdev:businessBlips',tonumber(id),list,properties) end
 end
 local lastBlipRequest={}
 RegisterNetEvent('osdev:requestBusinessBlips',function()

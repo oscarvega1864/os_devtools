@@ -11,3 +11,9 @@ OSDevtools.BusinessTypes={
     compraventa={label='Compraventa',sprite=628,color=0} -- radar_bat_cash_reg
 }
 OSDevtools.BusinessBlipScale=0.8
+-- Blips de propiedades (/crearpropiedad): radar_safehouse; verde a la venta, azul con propietario.
+OSDevtools.PropertyBlipTypes={
+    sale={label='Propiedad en venta',sprite=40,color=2},
+    owned={label='Propiedad',sprite=40,color=3}
+}
+OSDevtools.PropertyBlipScale=0.7

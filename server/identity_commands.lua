@@ -139,6 +139,7 @@ function OSDevtools.bindCore(options)
         return caller==nil or caller==resource or OSDevtools.CoreConfig.IdentityReaders[caller]==true
     end
     exports('GetActiveCharacter',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.dto(player) end)
+    exports('GetActiveEmployment',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.employment(player) end)
     exports('ResolveCharacter',function(value) if not reader() then return nil,'resource_not_authorized' end;return core.find(value) end)
     exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.3',provider='os_devtools'} end)
     exports('GetCharacterSpawn',function(player) if reader() then return core.spawnSelection(player) end end)

@@ -98,6 +98,12 @@ function OSDevtools.Core.new(options)
         local alias,err=core.ensure(source);local c=alias and state.characters[alias]
         return c and {characterId=c.id,alias=alias,source=source,connected=true,spawning=pending[source]~=nil} or nil,err
     end
+    -- Empleo del personaje activo (solo lectura, sin copiar el estado completo).
+    function core.employment(source)
+        local alias,err=core.ensure(source);local c=alias and state.characters[alias]
+        if not c then return nil,err end
+        return {characterId=c.id,job=c.job,rank=c.rank,duty=c.duty==true}
+    end
     function core.find(value)
         local alias,err=core.resolve(value);local c=alias and state.characters[alias]
         if not c then return nil,err end
