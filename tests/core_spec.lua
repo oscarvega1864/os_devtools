@@ -3,7 +3,7 @@ test('Explicit character and numeric alias syntax cannot be confused with player
     local c=fixture();local id=c.core.dto(2).characterId
     c.command('setmoney',1,{'char:'..id,'900','bank'});assert(c.snapshot().characters.client_test.bank==900)
     c.command('pagar',1,{'char:'..id,'50'});assert(c.snapshot().characters.client_test.cash==350)
-    c.command('crearpropiedad',1,{'200','casa','villa','30','char:'..id});local property=c.snapshot().properties['200']
+    c.command('crearpropiedad',1,{'200','30'});c.command('setpropiedad',1,{'200','char:'..id});local property=c.snapshot().properties['200']
     assert(property.owner=='client_test' and property.position.x==c.players[1].point.x)
     c.command('crearpersonaje',1,{'1','123'});local aliasId=c.snapshot().characters['123'].id
     assert(c.core.resolve('alias:123')=='123' and not c.core.resolve('123') and c.core.resolve('char:'..aliasId)=='123')
@@ -244,4 +244,42 @@ test('importarropa requires identity permission, writes an audited import and ap
     local old=OSDevtools.Util.copy(d.characters.client_test.appearance);old.components[12].d=1
     source=2;c.net['osdev:saveAppearance'](old,false);assert(c.writes==count)
     c.clock=c.clock+16000;source=2;c.net['osdev:saveAppearance'](old,false);assert(c.writes==count+1)
+end)
+
+test('crearpropiedad takes only number and price, stores exact position and heading without owner, and rejects duplicates',function()
+    local c=fixture();c.players[1].point={x=123.5,y=-45.25,z=30};c.players[1].h=271.5
+    local before=c.writes;c.command('crearpropiedad',1,{'200','casa','villa','50000'});assert(c.writes==before)
+    c.command('crearpropiedad',1,{'200','50000'})
+    local p=c.snapshot().properties['200'];assert(p.id==200 and p.price==50000 and p.owner==nil and p.name==nil and p.type==nil)
+    assert(p.position.x==123.5 and p.position.y==-45.25 and p.position.h==271.5)
+    assert(c.text(1):find('Propiedad #200 creada',1,true));before=c.writes
+    c.command('crearpropiedad',1,{'200','90'});assert(c.writes==before and c.text(1):find('La propiedad ID 200 ya existe.',1,true))
+    c.command('setpropiedad',1,{'200','2'});assert(c.snapshot().properties['200'].owner=='client_test')
+    c.command('misbienes',2);assert(c.text(2):find('Propiedad #200',1,true))
+end)
+test('crearnegocio uses fixed categories, multi-word names, automatic IDs and no owner',function()
+    local c=fixture();local before=c.writes
+    c.command('crearnegocio',1,{'casino','Royal','100'});c.command('crearnegocio',1,{'bar','Vanilla'});c.command('crearnegocio',1,{'bar','~r~X','10'})
+    assert(c.writes==before)
+    c.command('crearnegocio',1,{'LTD','LTD','Mirror','Park','30000'})
+    local b=c.snapshot().businesses['2'];assert(b.type=='ltd' and b.name=='LTD Mirror Park' and b.price==30000 and b.owner==nil and b.position.h==90)
+    assert(c.snapshot().businesses['1'].name=='market' and c.snapshot().businesses['1'].owner=='client_test')
+    c.command('crearnegocio',1,{'discoteca','Vanilla','50000'});assert(c.snapshot().businesses['3'].type=='discoteca' and c.snapshot().nextBusiness==4)
+    c.command('setnegocio',1,{'3','oscar_vega'});assert(c.snapshot().businesses['3'].owner=='oscar_vega')
+end)
+test('Business blips reach every player on change, on request, and are not resent when nothing visible changed',function()
+    local c=fixture();local function last(source)
+        for i=#c.messages,1,-1 do local m=c.messages[i];if m.name=='osdev:businessBlips' and m.source==source then return m.args[1],i end end
+    end
+    c.command('crearnegocio',1,{'medico','Pillbox','1'})
+    local list=last(1);local other=last(2);assert(list and other and #list==1 and list[1].type=='medico' and list[1].name=='Pillbox')
+    local _,index=last(2);c.core.savePositions({1,2},'manual',true);local _,after=last(2);assert(index==after)
+    c.clock=c.clock+6000;source=2;c.net['osdev:requestBusinessBlips']();local _,requested=last(2);assert(requested>after)
+    source=2;c.net['osdev:requestBusinessBlips']();local _,limited=last(2);assert(limited==requested)
+end)
+test('Legacy properties with type and name remain valid and keep their metadata',function()
+    local data=legacy();data.properties['7']={id=7,type='casa',name='villa',price=30,position={x=1,y=2,z=3,h=0,bucket=0}}
+    local c=fixture({['data.json']=json.encode(data)});local p=c.snapshot().properties['7']
+    assert(p.type=='casa' and p.name=='villa')
+    c.command('listpropiedades',1);assert(c.text(1):find('Propiedad #7 (villa)',1,true))
 end)

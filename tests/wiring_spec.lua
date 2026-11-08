@@ -1,6 +1,6 @@
 local total,failures=0,0
 local function test(name,run) total=total+1;local ok,err=pcall(run);if not ok then failures=failures+1 end;__report(name,ok,tostring(err)) end
-local scripts={'config/spawn.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
+local scripts={'config/spawn.lua','config/business.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
     'server/storage/codec.lua','server/storage/resource_files.lua','server/storage/json.lua','server/state.lua','server/appearance_xml.lua','server/storage.lua','server/core.lua',
     'server/auth_identity.lua','server/authorization_hub.lua','server/auth_boot.lua','server/identity_commands.lua','server.lua'}
 local function legacy()
@@ -79,7 +79,7 @@ test('All Lua syntax and actual manifest paths load while preserving pretest pos
     for _,file in ipairs(__files) do assert(loadfile('/repo/'..file),file) end
     local environment={fx_version=function(v) assert(v=='cerulean') end,game=function(v) assert(v=='gta5') end,lua54=function() end,author=function() end,description=function() end,
         version=function(v) assert(v=='0.1.3') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
-        shared_script=function(file) assert(loadfile('/repo/'..file)) end,
+        shared_script=function(file) assert(loadfile('/repo/'..file)) end,shared_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
         client_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,ui_page=function() end,files=function() end}
     assert(loadfile('/repo/fxmanifest.lua','t',environment))()
     local c=fixture();assert(not c.commands.setpj and c.commands.guardarpos and c.commands.ultimaubicacion and c.commands.setspawn)
@@ -100,13 +100,13 @@ end)
 test('Moderator inspection is usable but every mutating admin category remains protected',function()
     local c=fixture();c.auth(2);c.command('osautorizar',0,{'2','observer','10','CONFIRMAR'})
     local before=c.writes;c.command('verpropiedades',2,{'1'});assert(c.text(2):find('oscar_vega',1,true))
-    for name,args in pairs({setmoney={'1','10'},givemoney={'1','10'},removemoney={'1','10'},setjob={'1','gruppe6','vigilante'},setduty={'1','on'},setvehiculo={'1','2'},setnegocio={'1','2'},setpropiedad={'200','2'},crearvehiculo={'sultan','0'},crearnegocio={'ltd','market','2','30'},crearpropiedad={'200','casa','villa','50000'},setcolor={'0','111'},setlivery={'0','native'},listliveries={},recuperarvehiculo={'1'},setspawn={'1'},setuser={}}) do c.command(name,2,args) end
+    for name,args in pairs({setmoney={'1','10'},givemoney={'1','10'},removemoney={'1','10'},setjob={'1','gruppe6','vigilante'},setduty={'1','on'},setvehiculo={'1','2'},setnegocio={'1','2'},setpropiedad={'200','2'},crearvehiculo={'sultan','0'},crearnegocio={'ltd','market','30'},crearpropiedad={'200','50000'},setcolor={'0','111'},setlivery={'0','native'},listliveries={},recuperarvehiculo={'1'},setspawn={'1'},setuser={}}) do c.command(name,2,args) end
     assert(c.writes==before)
 end)
 test('All protected command categories execute with the unchanged broad osdev.admin ACE',function()
     local c=fixture();c.command('setmoney',1,{'2','5000','bank'});c.command('givemoney',1,{'2','20','cash'});c.command('removemoney',1,{'2','5','cash'})
     c.command('setjob',1,{'2','gruppe6','vigilante'});c.command('setduty',1,{'2','on'})
-    c.command('crearpropiedad',1,{'200','casa','villa','50000'});c.command('crearnegocio',1,{'ltd','shop','2','30'});c.command('crearvehiculo',1,{'sultan','0','111','fijo','2'})
+    c.command('crearpropiedad',1,{'200','50000'});c.command('crearnegocio',1,{'ltd','shop','30'});c.command('crearvehiculo',1,{'sultan','0','111','fijo','2'})
     c.command('setpropiedad',1,{'200','2'});c.command('setnegocio',1,{'1','oscar_vega'});c.command('setvehiculo',1,{'1','2'});c.command('setspawn',1,{'2'})
     c.command('recuperarvehiculo',1,{'1'});c.command('setcolor',1,{'0','111'});c.command('setlivery',1,{'0','native'});c.command('listliveries',1)
     for _,name in ipairs({'setuser','verpropiedades','listvehiculos','listnegocios','listpropiedades','infovehiculo','infonegocio'}) do c.command(name,1,{'1'}) end

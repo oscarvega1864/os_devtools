@@ -4,7 +4,7 @@ lua54 'yes'
 author 'OSCAR - entorno de pruebas'
 description 'Herramientas standalone de personajes, economia y activos para DEV; NO produccion'
 version '0.1.3'
-shared_script 'config/spawn.lua'
+shared_scripts { 'config/spawn.lua', 'config/business.lua' }
 server_scripts {
     'config/authorization.lua', 'config/core.lua', 'server/lib/util.lua',
     'server/storage/codec.lua', 'server/storage/resource_files.lua', 'server/storage/json.lua',
@@ -12,7 +12,7 @@ server_scripts {
     'server/auth_identity.lua', 'server/authorization_hub.lua', 'server/auth_boot.lua',
     'server/identity_commands.lua', 'server.lua'
 }
-client_scripts { 'client.lua', 'client/appearance.lua', 'client/spawn_controller.lua', 'client/spawn.lua' }
+client_scripts { 'client.lua', 'client/appearance.lua', 'client/spawn_controller.lua', 'client/spawn.lua', 'client/business.lua' }
 
 ui_page 'html/index.html'
 files { 'html/index.html', 'html/style.css', 'html/app.js' }

@@ -27,7 +27,7 @@ Todos los destinatarios comunes aceptan `2` (jugador conectado), `oscar_vega` o 
 | Personal | `/dinero`, `/misbienes`, `/mispropiedades`, `/hud`, `/pagar <destinatario> <cantidad>`, `/ceder <destinatario>` estando al volante del vehículo propio. |
 | `osdev.economy` | `/setmoney <destino> <cantidad> [cash\|bank]`, `/givemoney ...`, `/removemoney ...`. |
 | `osdev.jobs` | `/setjob <destino> <job> <rango>`, `/setduty <destino> on\|off`. |
-| `osdev.assets` | `/crearpropiedad <id> <tipo> <nombre> <precio> [destino]`, `/crearnegocio <tipo> <nombre> <destino> <precio>`, `/crearvehiculo <modelo> <color1> [color2] [temporal\|fijo] [destino]`. |
+| `osdev.assets` | `/crearpropiedad <numero> <precio>`, `/crearnegocio <tipo> <nombre> <precio>`, `/crearvehiculo <modelo> <color1> [color2] [temporal\|fijo] [destino]`. |
 | `osdev.assets` | `/setpropiedad <idBien> <destino>`, `/setnegocio ...`, `/setvehiculo ...`, `/recuperarvehiculo <id>`, `/setcolor <color1> [color2]`, `/setlivery <índice> [native\|mod48]`, `/listliveries`. |
 | `osdev.inspect` | `/verpropiedades <destino>`, `/listvehiculos`, `/listnegocios`, `/listpropiedades`, `/infovehiculo <id>`, `/infonegocio <id>`, `/infopropiedad <id>`. |
 | Diagnóstico | `/oscomandos`, `/ospermisos`. |
@@ -37,6 +37,13 @@ Todos los destinatarios comunes aceptan `2` (jugador conectado), `oscar_vega` o 
 Ejemplos: `/setmoney 2 5000 bank`, `/setjob oscar_vega gruppe6 vigilante`, `/setpropiedad 200 2`, `/pagar 2 50`. Los pagos transfieren efectivo entre personajes distintos; no admiten negativos, exceso de fondos o desbordamiento. La asignación administrativa de bienes no cobra sus precios.
 
 Los comandos físicos utilizan la posición del administrador; el destinatario solo decide la titularidad. Los vehículos siguen generándose mediante cliente autorizado, con colores, liveries, matrícula e ID del registro. La recuperación bloquea peticiones simultáneas del mismo registro. Sus registros, incluidos los temporales, se conservan sin reciclar IDs; las entidades temporales conocidas se retiran al detener el recurso. Los fijos no reaparecen automáticamente tras reiniciar. Un servidor con entity lockdown estricto necesita un adaptador de creación autorizado desde servidor.
+
+## Propiedades y negocios
+
+- `/crearpropiedad <numero> <precio>`: el administrador elige el número; se guardan precio, coordenadas exactas y heading, sin nombre, tipo ni propietario. Etiqueta visible `Propiedad #200`. Un número existente se rechaza con `La propiedad ID 200 ya existe.` Las propiedades antiguas conservan su tipo y nombre.
+- `/crearnegocio <tipo> <nombre> <precio>`: ID automático, sin propietario. Tipos: `bar`, `ltd`, `discoteca`, `seguridad`, `medico`, `restaurante`, `compraventa`. El nombre admite varias palabras (3–40 caracteres, sin `~`, `<`, `>`). Ejemplo: `/crearnegocio ltd LTD Mirror Park 30000`.
+- `/setpropiedad <numero> <destino>` y `/setnegocio <id> <destino>` asignan el titular.
+- Cada negocio de un tipo conocido tiene un blip con su nombre; sprite y color por categoría en `config/business.lua`. Los blips se envían al entrar y solo cuando cambian los negocios; el cliente mantiene uno por ID, sin duplicados al reconectar.
 
 ## Posición, muerte y aparición
 

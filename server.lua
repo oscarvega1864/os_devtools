@@ -66,6 +66,15 @@ local function ownerLabel(alias)
   return character and (alias..' ['..character.id..']') or 'sin propietario'
 end
 local function getCoords(src) return core and core.position(src) end
+-- Etiqueta visible de un bien. Las propiedades nuevas no tienen nombre: "Propiedad #200".
+local function assetLabel(category,id,record)
+  if category=='properties' then return 'Propiedad #'..id..(record.name and (' ('..record.name..')') or '') end
+  if category=='businesses' then
+    local kind=OSDevtools.BusinessTypes[record.type]
+    return record.name..' ['..(kind and kind.label or record.type)..']'
+  end
+  return record.model or record.name or record.type or '?'
+end
 local function needAdmin(src,permission)
   permission=permission or 'osdev.admin'
   if not ready then out(src,'Registro no disponible; revisar almacenamiento.');return false end
@@ -96,10 +105,10 @@ end,false)
 RegisterCommand('misbienes',function(src)
   local alias=exists(src); if not alias then return end
   showCharacter(src,alias)
-  for _,category in ipairs({{'Vehiculos',state.vehicles},{'Negocios',state.businesses},{'Propiedades',state.properties}}) do
+  for _,category in ipairs({{'Vehiculos','vehicles'},{'Negocios','businesses'},{'Propiedades','properties'}}) do
     local found={}
-    for id,v in pairs(category[2]) do
-      if v.owner==alias then found[#found+1] = ('#%s %s%s'):format(id,v.name or v.model or v.type or '',v.fixed==false and ' (temporal)' or '') end
+    for id,v in pairs(state[category[2]]) do
+      if v.owner==alias then found[#found+1] = ('#%s %s%s'):format(id,assetLabel(category[2],id,v),v.fixed==false and ' (temporal)' or '') end
     end
     table.sort(found)
     out(src,category[1]..': '..(#found>0 and table.concat(found,', ') or 'ninguno'))
@@ -120,9 +129,9 @@ RegisterCommand('verpropiedades',function(src,args)
   if not needAdmin(src,'osdev.inspect') then return end
   local alias=resolve(args[1]); if not alias then return out(src,'Uso: /verpropiedades <idJugador|alias>') end
   showCharacter(src,alias)
-  for _,cat in ipairs({{'Vehiculos',state.vehicles},{'Negocios',state.businesses},{'Propiedades',state.properties}}) do
+  for _,cat in ipairs({{'Vehiculos','vehicles'},{'Negocios','businesses'},{'Propiedades','properties'}}) do
     local results={}
-    for id,v in pairs(cat[2]) do if v.owner==alias then results[#results+1]=id..':'..(v.name or v.model or v.type or '?') end end
+    for id,v in pairs(state[cat[2]]) do if v.owner==alias then results[#results+1]=id..':'..assetLabel(cat[2],id,v) end end
     out(src,cat[1]..': '..(#results>0 and table.concat(results,', ') or 'ninguno'))
   end
 end,false)
@@ -204,7 +213,7 @@ RegisterCommand('oscomandos',function(src)
   local lines={
     'PERSONAJE: /dinero, /misbienes, /mispropiedades, /hud, /pagar <id|alias> <cantidad>, /ceder <id|alias> (en tu coche)',
     'ADMIN: /setuser, /setjob, /setduty, /setmoney, /givemoney, /removemoney, /verpropiedades; /ospermisos',
-    'ACTIVOS: /crearpropiedad, /crearnegocio, /crearvehiculo, /setpropiedad, /setnegocio, /setvehiculo',
+    'ACTIVOS: /crearpropiedad <numero> <precio>, /crearnegocio <tipo> <nombre> <precio>, /crearvehiculo, /setpropiedad, /setnegocio, /setvehiculo',
     'VEHICULOS: /recuperarvehiculo, /setcolor, /setlivery, /listliveries, /listvehiculos, /infovehiculo',
     'CONSULTA: /listnegocios, /infonegocio, /listpropiedades, /infopropiedad'
   }
@@ -227,26 +236,76 @@ RegisterCommand('setduty',function(src,args)
   if action(src,'setduty',function(d) d.characters[who].duty=(val=='on');return true end) then out(src,'Duty de '..who..': '..val) end
 end,false)
 
-local function createAsset(kind,src,args)
-  if not needAdmin(src,'osdev.assets') then return end
-  local pos=getCoords(src);if not pos then return out(src,'Debes ejecutar este comando dentro del juego.') end
-  local id,typ,name,price,owner
-  if kind=='properties' then
-    id=positive(args[1]);typ=args[2];name=args[3];price=money(args[4]);owner=args[5] and resolve(args[5]) or nil
-    if not id or not validAlias(typ) or not validAlias(name) or price==nil or (args[5] and not owner) then return out(src,'Uso: /crearpropiedad <id> <tipo> <nombre> <precio> [destinatario]') end
-  else
-    typ=args[1];name=args[2];owner=resolve(args[3]);price=money(args[4])
-    if not validAlias(typ) or not validAlias(name) or not owner or price==nil then return out(src,'Uso: /crearnegocio <tipo> <nombre> <propietario> <precio>') end
-  end
-  if action(src,'create '..kind,function(d)
-    if kind=='businesses' then id=d.nextBusiness;d.nextBusiness=id+1 end
-    if d[kind][tostring(id)] then return false,'ERROR: El ID '..id..' ya existe.' end
-    d[kind][tostring(id)]={id=id,type=typ,name=name,owner=owner,price=price,position=pos}
-    return true
-  end) then out(src,('Creado %s #%d %s en tus coordenadas. Titular: %s.'):format(kind,id,name,ownerLabel(owner))) end
+-- Nombre de negocio: varias palabras, 3-40 bytes, sin codigos de formato de GTA (~) ni etiquetas.
+local function businessName(args)
+  local name=table.concat(args,' ',2,#args-1):gsub('^%s+',''):gsub('%s+$','')
+  if #name<3 or #name>40 or name:find('[%c~<>\\]') then return nil end
+  return name
 end
-RegisterCommand('crearpropiedad',function(src,args) createAsset('properties',src,args) end,false)
-RegisterCommand('crearnegocio',function(src,args) createAsset('businesses',src,args) end,false)
+-- Blips: se envian a cada jugador solo cuando cambian los negocios visibles.
+local blipSignature=nil
+local function businessBlips()
+  local list={}
+  for id,b in pairs(state.businesses) do
+    if b.position and OSDevtools.BusinessTypes[b.type] then
+      list[#list+1]={id=tonumber(id),type=b.type,name=b.name,x=b.position.x,y=b.position.y,z=b.position.z}
+    end
+  end
+  table.sort(list,function(a,b) return a.id<b.id end)
+  return list
+end
+local function signatureOf(list)
+  local parts={};for _,b in ipairs(list) do parts[#parts+1]=table.concat({b.id,b.type,b.name,b.x,b.y,b.z},'|') end
+  return table.concat(parts,';')
+end
+local function pushBlips(target)
+  local list=businessBlips()
+  if target then return TriggerClientEvent('osdev:businessBlips',target,list) end
+  local signature=signatureOf(list)
+  if signature==blipSignature then return end
+  blipSignature=signature
+  for _,id in ipairs(GetPlayers()) do TriggerClientEvent('osdev:businessBlips',tonumber(id),list) end
+end
+local lastBlipRequest={}
+RegisterNetEvent('osdev:requestBusinessBlips',function()
+  local src=source
+  if src<=0 or not ready then return end
+  local now=GetGameTimer()
+  if lastBlipRequest[src] and now>=lastBlipRequest[src] and now-lastBlipRequest[src]<5000 then return end
+  lastBlipRequest[src]=now
+  pushBlips(src)
+end)
+AddEventHandler('playerDropped',function() lastBlipRequest[source]=nil end)
+
+-- /crearpropiedad <numero> <precio>: ID elegido por el administrador, sin nombre, tipo ni titular.
+RegisterCommand('crearpropiedad',function(src,args)
+  if not needAdmin(src,'osdev.assets') then return end
+  local id=positive(args[1]);local price=money(args[2])
+  if #args~=2 or not id or id>2147483646 or price==nil then return out(src,'Uso: /crearpropiedad <numero> <precio>. Ejemplo: /crearpropiedad 200 50000') end
+  if state.properties[tostring(id)] then return out(src,'La propiedad ID '..id..' ya existe.') end
+  local pos=getCoords(src);if not pos then return out(src,'Debes ejecutar este comando dentro del juego, en un bucket permitido.') end
+  if action(src,'create property '..id,function(d)
+    if d.properties[tostring(id)] then return false,'La propiedad ID '..id..' ya existe.' end
+    d.properties[tostring(id)]={id=id,price=price,position=pos}
+    return true
+  end) then out(src,('Propiedad #%d creada en tus coordenadas por $%d. Sin propietario: /setpropiedad %d <destinatario>.'):format(id,price,id)) end
+end,false)
+-- /crearnegocio <tipo> <nombre> <precio>: ID automatico, sin titular, blip segun la categoria.
+RegisterCommand('crearnegocio',function(src,args)
+  if not needAdmin(src,'osdev.assets') then return end
+  local types={};for key in pairs(OSDevtools.BusinessTypes) do types[#types+1]=key end;table.sort(types)
+  local usage='Uso: /crearnegocio <tipo> <nombre> <precio>. Tipos: '..table.concat(types,', ')..'. Ejemplo: /crearnegocio ltd LTD_Mirror 30000'
+  local kind=args[1] and args[1]:lower();local price=#args>=3 and money(args[#args]) or nil;local name=#args>=3 and businessName(args) or nil
+  if not kind or not OSDevtools.BusinessTypes[kind] or price==nil or not name then return out(src,usage) end
+  local pos=getCoords(src);if not pos then return out(src,'Debes ejecutar este comando dentro del juego, en un bucket permitido.') end
+  local id
+  if action(src,'create business '..kind,function(d)
+    id=d.nextBusiness;d.nextBusiness=id+1
+    if d.businesses[tostring(id)] then return false,'ERROR: El ID '..id..' ya existe.' end
+    d.businesses[tostring(id)]={id=id,type=kind,name=name,price=price,position=pos}
+    return true
+  end) then out(src,('Negocio #%d "%s" (%s) creado en tus coordenadas por $%d. Sin propietario: /setnegocio %d <destinatario>.'):format(id,name,OSDevtools.BusinessTypes[kind].label,price,id)) end
+end,false)
 local function assign(kind,src,args)
   if not needAdmin(src,'osdev.assets') then return end
   local id=positive(args[1]); local who=resolve(args[2])
@@ -269,7 +328,7 @@ local function listCategory(category,src,args)
   local ids={};for k in pairs(d) do ids[#ids+1]=tonumber(k) end; table.sort(ids)
   if #ids==0 then return out(src,'No hay registros.') end
   for _,k in ipairs(ids) do
-    local obj=d[tostring(k)];out(src,('#%d %s | %s'):format(k,obj.name or obj.model or obj.type or '?',ownerLabel(obj.owner)))
+    local obj=d[tostring(k)];out(src,('#%d %s | %s'):format(k,assetLabel(category,k,obj),ownerLabel(obj.owner)))
   end
 end
 for command,cat in pairs({listvehiculos='vehicles',listnegocios='businesses',listpropiedades='properties',infovehiculo='vehicles',infonegocio='businesses',infopropiedad='properties'}) do
@@ -404,7 +463,7 @@ core=OSDevtools.Core.new({
     return {x=point.x,y=point.y,z=point.z,h=GetEntityHeading(ped),bucket=GetPlayerRoutingBucket(src)},GetEntityHealth(ped)
   end,
   schedule=SetTimeout,
-  publish=function(snapshot,status) state=snapshot;ready=status;pushAllHud() end,
+  publish=function(snapshot,status) state=snapshot;ready=status;pushAllHud();if ready then pushBlips() end end,
   changed=function(src,dto)
     TriggerEvent('osdev:characterChanged',src,dto)
     if GetPlayerName(src) then TriggerClientEvent('osdev:characterChanged',src,dto) end

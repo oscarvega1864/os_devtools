@@ -108,6 +108,10 @@ local function base(data)
                 if not u.text(record.model,50) or not u.integer(record.primary,0,159) or not u.integer(record.secondary,0,159)
                     or type(record.fixed) ~= 'boolean' or not u.text(record.plate,16)
                     or (record.livery ~= nil and not u.integer(record.livery,0,255)) then return nil,'Vehiculo invalido.' end
+            elseif category == 'properties' then
+                -- Sintaxis actual: solo numero y precio. Tipo/nombre de propiedades antiguas se conservan.
+                if not u.integer(record.price,0,2147483647) or (record.type ~= nil and not u.text(record.type,40))
+                    or (record.name ~= nil and not u.text(record.name,40)) then return nil,'Propiedad invalida.' end
             elseif not u.text(record.type,40) or not u.text(record.name,40) or not u.integer(record.price,0,2147483647) then return nil,'Bien invalido.' end
         end
         if category == 'vehicles' and data.nextVehicle <= highest then return nil,'Contador de vehiculos obsoleto.' end
