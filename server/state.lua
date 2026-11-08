@@ -24,6 +24,8 @@ function domain.position(value, dated)
         and (not dated or (u.integer(value.at,0,253402300799) and u.text(value.reason,32)))
 end
 function domain.number(value) return tonumber(('%.12g'):format(value)) end
+-- Tipos admitidos por CREATE_VEHICLE_SERVER_SETTER (campo type de vehicles.meta).
+domain.vehicleTypes={automobile=true,bike=true,boat=true,heli=true,plane=true,submarine=true,trailer=true}
 -- Apariencia del ped: modelo, 12 componentes, accesorios y, en modelos freemode, cabeza.
 -- Solo admite enteros/decimales acotados; no se interpreta ningun texto del cliente.
 local function unit(value,minimum) return u.finite(value) and value>=(minimum or 0) and value<=1 end
@@ -107,7 +109,8 @@ local function base(data)
             if category == 'vehicles' then
                 if not u.text(record.model,50) or not u.integer(record.primary,0,159) or not u.integer(record.secondary,0,159)
                     or type(record.fixed) ~= 'boolean' or not u.text(record.plate,16)
-                    or (record.livery ~= nil and not u.integer(record.livery,0,255)) then return nil,'Vehiculo invalido.' end
+                    or (record.livery ~= nil and not u.integer(record.livery,0,255))
+                    or (record.vtype ~= nil and not domain.vehicleTypes[record.vtype]) then return nil,'Vehiculo invalido.' end
             elseif category == 'properties' then
                 -- Sintaxis actual: solo numero y precio. Tipo/nombre de propiedades antiguas se conservan.
                 if not u.integer(record.price,0,2147483647) or (record.type ~= nil and not u.text(record.type,40))

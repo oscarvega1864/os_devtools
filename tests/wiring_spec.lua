@@ -2,7 +2,7 @@ local total,failures=0,0
 local function test(name,run) total=total+1;local ok,err=pcall(run);if not ok then failures=failures+1 end;__report(name,ok,tostring(err)) end
 local scripts={'config/spawn.lua','config/business.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
     'server/storage/codec.lua','server/storage/resource_files.lua','server/storage/json.lua','server/state.lua','server/appearance_xml.lua','server/storage.lua','server/core.lua',
-    'server/auth_identity.lua','server/authorization_hub.lua','server/auth_boot.lua','server/identity_commands.lua','server.lua'}
+    'server/auth_identity.lua','server/authorization_hub.lua','server/auth_boot.lua','server/identity_commands.lua','server/vehicles.lua','server.lua'}
 local function legacy()
     return {version=1,nextVehicle=2,nextBusiness=2,characters={
         oscar_vega={cash=1000,bank=2000,job='gruppe6',rank='vigilante',duty=false,lastPosition={x=10,y=20,z=30,h=90,bucket=0,time=1700000000}},
@@ -33,11 +33,33 @@ local function fixture(files,behavior)
         return c.aceInteger and (result and 1 or 0) or result
     end
     GetPlayerPed=function(source) return c.players[source] and source+100 or 0 end
-    GetEntityCoords=function(ped) return c.players[ped-100].point end
-    GetEntityHeading=function(ped) return c.players[ped-100].h end
+    -- Mundo simulado de vehiculos de servidor (handles >1000, sin choque con peds 101+).
+    c.world=c.world or {};c.nextEntity=c.nextEntity or 1000;c.onesync=c.onesync or 'on'
+    GetConvar=function(name,default) if name=='onesync' then return c.onesync end;return default end
+    GetHashKey=function(name) local h=0;for i=1,#name do h=(h*31+name:byte(i))%2147483647 end;return h end
+    CreateVehicleServerSetter=function(model,kind,x,y,z,h)
+        if c.failCreate then return 0 end
+        c.nextEntity=c.nextEntity+1;c.world[c.nextEntity]={model=model,kind=kind,point={x=x,y=y,z=z},h=h,bucket=0,state={}};return c.nextEntity
+    end
+    SetEntityOrphanMode=function(e,mode) c.world[e].orphan=mode end
+    SetEntityRoutingBucket=function(e,bucket) c.world[e].bucket=bucket end
+    GetEntityRoutingBucket=function(e) return c.world[e].bucket end
+    SetVehicleNumberPlateText=function(e,plate) c.world[e].plate=plate end
+    SetVehicleColours=function(e,a,b) c.world[e].colours={a,b} end
+    GetVehicleNumberPlateText=function(e) return c.world[e] and c.world[e].plate or '' end
+    GetAllVehicles=function() local r={};for e in pairs(c.world) do r[#r+1]=e end;table.sort(r);return r end
+    DeleteEntity=function(e) c.world[e]=nil end
+    Entity=function(e)
+        return {state=setmetatable({},{__index=function(_,key)
+            if key=='set' then return function(_,name,value) c.world[e].state[name]=value end end
+            return c.world[e] and c.world[e].state[key]
+        end})}
+    end
+    GetEntityCoords=function(e) if c.world[e] then return c.world[e].point end;return c.players[e-100].point end
+    GetEntityHeading=function(e) if c.world[e] then return c.world[e].h end;return c.players[e-100].h end
     GetEntityHealth=function(ped) return c.players[ped-100].health or 200 end
     GetPlayerRoutingBucket=function(source) return c.players[source].bucket end
-    DoesEntityExist=function(ped) return c.players[ped-100]~=nil end
+    DoesEntityExist=function(e) return c.world[e]~=nil or c.players[e-100]~=nil end
     NetworkGetEntityFromNetworkId=function() return 0 end
     SetPlayerRoutingBucket=function(source,bucket) c.players[source].bucket=bucket end
     SetEntityCoords=function(ped,x,y,z) c.players[ped-100].point={x=x,y=y,z=z} end
@@ -129,7 +151,7 @@ test('Client events cannot fake local txAdmin authentication or choose another i
     local c=fixture();assert(not c.net['txAdmin:events:adminAuth'] and not c.net['txAdmin:events:adminsUpdated'])
     c.event('txAdmin:events:adminAuth','untrusted',{netid=2,isAdmin=true,permissions={'all_permissions'}})
     c.command('osautorizar',0,{'2','devtools_admin','10','CONFIRMAR'});assert(not OSDevtools.AuthHub.can(2,'osdev.admin'))
-    local before=c.writes;source=2;c.net['osdev:vehicleAppearance']('OS000001',0,111);c.net['osdev:spawned']('forged',1);assert(c.writes==before)
+    local before=c.writes;source=2;c.net['osdev:vehicleAppearance']('OS000001',0,111);c.net['osdev:vehicleModelTypes']('forged',{sultan='automobile'});assert(c.writes==before)
 end)
 test('Only approved resource consumers can query their own verified scopes',function()
     local c=fixture();c.auth(2);c.command('osautorizar',0,{'2','security_admin','10','CONFIRMAR'})

@@ -2,9 +2,8 @@ local RESOURCE = GetCurrentResourceName()
 local core
 local state={characters={},bindings={},vehicles={},businesses={},properties={},audit={}}
 local ready=false
-local sessions = {}  -- vehicle entity netId by record number; transient
-local requestNonce = 0
-local pending = {}
+local vehicles       -- OSDevtools.Vehicles: entidades creadas por el servidor (ver server/vehicles.lua)
+local missingTypes={} -- vehiculos fijos antiguos sin tipo: se completan al entrar un administrador
 local lastHudRequest = {}
 local function pushHud(src)
   if src == 0 or not GetPlayerName(src) then return end
@@ -66,6 +65,11 @@ local function ownerLabel(alias)
   return character and (alias..' ['..character.id..']') or 'sin propietario'
 end
 local function getCoords(src) return core and core.position(src) end
+-- Punto a 4 m delante de una posicion (vector frontal de GTA: -sin(h), cos(h)).
+local function ahead(pos,distance)
+  local r=math.rad(pos.h or 0);local d=distance or 4
+  return {x=OSDevtools.State.number(pos.x-math.sin(r)*d),y=OSDevtools.State.number(pos.y+math.cos(r)*d),z=pos.z,h=pos.h,bucket=pos.bucket}
+end
 -- Etiqueta visible de un bien. Las propiedades nuevas no tienen nombre: "Propiedad #200".
 local function assetLabel(category,id,record)
   if category=='properties' then return 'Propiedad #'..id..(record.name and (' ('..record.name..')') or '') end
@@ -346,54 +350,75 @@ RegisterCommand('crearvehiculo',function(src,args)
   if secondary and secondary<=159 then ix=4 else secondary=primary end
   local mode=args[ix] or 'temporal';local who=args[ix+1] and resolve(args[ix+1]) or nil
   if (mode~='temporal' and mode~='fijo') or (args[ix+1] and not who) then return out(src,'Modo temporal|fijo y personaje valido (si se proporciona).') end
-  local pos=getCoords(src);if not pos then return out(src,'Ejecuta desde el juego.') end
-  local id=state.nextVehicle
-  local plate=('OS%06d'):format(id)
-  if not action(src,'create vehicle',function(d)
-    local newId=d.nextVehicle
-    d.nextVehicle=newId+1
-    id=newId
-    plate=('OS%06d'):format(id)
-    d.vehicles[tostring(id)]={id=id,model=model,primary=primary,secondary=secondary,fixed=(mode=='fijo'),owner=who,plate=plate,position=pos,livery=nil,liveryType=nil}
-    return true
-  end) then return end
-  requestNonce=requestNonce+1
-  local nonce=tostring(requestNonce)..':'..tostring(os.time())
-  pending[nonce]={id=id,source=src,expires=GetGameTimer()+15000}
-  TriggerClientEvent('osdev:spawnVehicle',src,{nonce=nonce,id=id,model=model,primary=primary,secondary=secondary,plate=plate,position=pos})
-  out(src,('Vehiculo #%d registrado (%s). Generando...'):format(id,mode))
+  local pos=getCoords(src);if not pos then return out(src,'Ejecuta desde el juego, en un bucket permitido.') end
+  if not vehicles.onesync() then return out(src,'OneSync desactivado: el servidor no puede crear vehiculos.') end
+  local point=ahead(pos)
+  vehicles.inspect(src,{model},function(types)
+    local vtype=types and types[model]
+    if not vtype then return out(src,'Modelo de vehiculo invalido o no disponible en tu cliente: '..model..'. No se registra nada.') end
+    local id,plate
+    if not action(src,'create vehicle',function(d)
+      id=d.nextVehicle;d.nextVehicle=id+1;plate=('OS%06d'):format(id)
+      d.vehicles[tostring(id)]={id=id,model=model,primary=primary,secondary=secondary,fixed=(mode=='fijo'),owner=who,plate=plate,position=point,vtype=vtype}
+      return true
+    end) then return end
+    local entity,err=vehicles.spawn(id,state.vehicles[tostring(id)],point)
+    if entity then out(src,('Vehiculo #%d (%s, %s) creado delante de ti. Matricula %s.'):format(id,model,mode,plate))
+    else out(src,('Vehiculo #%d registrado, pero %s Reintenta con /recuperarvehiculo %d.'):format(id,err,id)) end
+  end)
 end,false)
-RegisterNetEvent('osdev:spawned',function(nonce,netId,err)
-  local src=source
-  if not needAdmin(src,'osdev.assets') or type(nonce)~='string' or #nonce>80 then return end
-  local p=pending[nonce]
-  if not p or p.source~=src or GetGameTimer()>p.expires then return end
-  pending[nonce]=nil
-  local id=p.id
-  local v=state.vehicles[tostring(id)]
-  if not v then return end
-  local entity=positive(netId) and NetworkGetEntityFromNetworkId(netId) or 0
-  if entity and entity~=0 and DoesEntityExist(entity) then
-    sessions[id]=netId
-    out(src,'Vehiculo #'..id..' creado. Matricula '..v.plate)
-  else
-    out(src,'No se pudo generar el vehiculo ('..tostring(err or 'sin entidad de red')..'). Registro conservado para reintentar con /recuperarvehiculo '..id)
+-- Completa el tipo de modelo de vehiculos registrados preguntando a un administrador conectado.
+local function completeTypes(src,ids,done)
+  local models,seen={},{}
+  for _,id in ipairs(ids) do
+    local record=state.vehicles[tostring(id)]
+    if record and not seen[record.model] then seen[record.model]=true;models[#models+1]=record.model end
   end
+  if #models==0 then return done(false) end
+  vehicles.inspect(src,models,function(types)
+    if not types then return done(false) end
+    local updates={}
+    for _,id in ipairs(ids) do
+      local record=state.vehicles[tostring(id)];local kind=record and types[record.model]
+      if kind and record.vtype~=kind then updates[tostring(id)]=kind end
+    end
+    if not next(updates) then return done(false) end
+    local ok=core.change(src,'vehicle types',function(d)
+      for key,kind in pairs(updates) do if d.vehicles[key] then d.vehicles[key].vtype=kind end end
+      return true
+    end)
+    done(ok)
+  end)
+end
+RegisterNetEvent('osdev:vehicleModelTypes',function(nonce,result) vehicles.inspected(source,nonce,result) end)
+-- Al entrar un administrador se completan los tipos pendientes y se restauran esos vehiculos.
+RegisterNetEvent('osdev:vehiclesReady',function()
+  local src=source
+  if src<=0 or not ready or #missingTypes==0 or not admin(src,'osdev.assets') then return end
+  local ids=missingTypes;missingTypes={}
+  completeTypes(src,ids,function()
+    local created,missing=vehicles.restore()
+    for _,id in ipairs(missing) do missingTypes[#missingTypes+1]=id end
+    print(('[os_devtools] Vehiculos fijos restaurados tras completar tipos: %d. Pendientes: %d.'):format(created,#missingTypes))
+  end)
 end)
 RegisterCommand('recuperarvehiculo',function(src,args)
   if not needAdmin(src,'osdev.assets') then return end
   local id=positive(args[1]);local v=id and state.vehicles[tostring(id)]
   if not v then return out(src,'Uso: /recuperarvehiculo <idExistente>') end
-  for nonce,context in pairs(pending) do
-    if GetGameTimer()>=context.expires then pending[nonce]=nil
-    elseif context.id==id then return out(src,'Generacion pendiente para el vehiculo #'..id..'; espera su resultado.') end
+  if vehicles.find(id,v) then return out(src,'El vehiculo #'..id..' ya existe en el mundo; no se duplica.') end
+  local pos=getCoords(src);if not pos then return out(src,'Ejecuta desde el juego, en un bucket permitido.') end
+  local function here()
+    local record=state.vehicles[tostring(id)];local point=ahead(pos)
+    local entity,err=vehicles.spawn(id,record,point)
+    if not entity then return out(src,err) end
+    if record.fixed then core.change(src,'vehicle recovered '..id,function(d) d.vehicles[tostring(id)].position=point;return true end) end
+    out(src,'Vehiculo #'..id..' recuperado delante de ti.')
   end
-  local net=sessions[id];local ent=net and NetworkGetEntityFromNetworkId(net) or 0
-  if ent~=0 and DoesEntityExist(ent) then return out(src,'Ya hay una entidad activa para el vehiculo #'..id) end
-  requestNonce=requestNonce+1
-  local nonce=tostring(requestNonce)..':'..tostring(os.time())
-  pending[nonce]={id=id,source=src,expires=GetGameTimer()+15000}
-  TriggerClientEvent('osdev:spawnVehicle',src,{nonce=nonce,id=id,model=v.model,primary=v.primary,secondary=v.secondary,plate=v.plate,position=getCoords(src) or v.position,livery=v.livery,liveryType=v.liveryType})
+  if v.vtype then return here() end
+  completeTypes(src,{id},function(ok)
+    if ok or state.vehicles[tostring(id)].vtype then here() else out(src,'No se pudo determinar el tipo del modelo '..v.model..'.') end
+  end)
 end,false)
 RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,livery,liveryType)
   local src=source
@@ -402,7 +427,7 @@ RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,live
   if veh==0 or not DoesEntityExist(veh) or GetPedInVehicleSeat(veh,-1)~=GetPlayerPed(src) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return end
   local found
   for id,v in pairs(state.vehicles) do if v.plate==plate then found=id;break end end
-  if not found then return out(src,'Vehiculo no registrado: cambios no persistidos.') end
+  if not found then return out(src,'Este vehiculo no lo gestiona os_devtools (p. ej. creado con vMenu): color/livery no guardados. Usa /crearvehiculo para uno persistente.') end
   if primary~=nil and (not integer(primary) or primary>159 or not integer(secondary) or secondary>159) then return end
   if livery~=nil and (not integer(livery) or livery>255 or (liveryType~='native' and liveryType~='mod48')) then return end
   if action(src,'vehicle appearance',function(d)
@@ -410,7 +435,10 @@ RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,live
     if primary~=nil then v.primary=primary;v.secondary=secondary end
     if livery~=nil then v.livery=livery;v.liveryType=liveryType end
     return true
-  end) then out(src,'Aspecto guardado para vehiculo #'..found) end
+  end) then
+    vehicles.refreshLook(tonumber(found),state.vehicles[found])
+    out(src,'Aspecto guardado para vehiculo #'..found)
+  end
 end)
 
 RegisterNetEvent('osdev:cederVehicle',function(target,plate)
@@ -443,12 +471,15 @@ RegisterCommand('ceder',function(src,args)
   TriggerClientEvent('osdev:requestCeder',src,args[1])
 end,false)
 AddEventHandler('onResourceStop',function(name)
-  if name~=RESOURCE then return end
-  for id,v in pairs(state.vehicles) do
-    if not v.fixed then
-      local net=sessions[tonumber(id)];local ent=net and NetworkGetEntityFromNetworkId(net) or 0
-      if ent~=0 and DoesEntityExist(ent) then DeleteEntity(ent) end
-    end
+  if name~=RESOURCE or not vehicles then return end
+  if ready then vehicles.savePositions('resource_stop') end
+  vehicles.stop()
+end)
+AddEventHandler('txAdmin:events:serverShuttingDown',function() if ready and vehicles then vehicles.savePositions('server_shutdown') end end)
+CreateThread(function()
+  while true do
+    Wait(30000)
+    if ready and vehicles then vehicles.savePositions('periodic') end
   end
 end)
 local storage,storageError=OSDevtools.openStorage(RESOURCE)
@@ -475,12 +506,19 @@ core=OSDevtools.Core.new({
   spawnAccepted=function(src,token) TriggerClientEvent('osdev:spawnAccepted',src,token) end
 })
 OSDevtools.Runtime=core
+vehicles=OSDevtools.Vehicles.new({state=function() return state end,change=core.change,now=GetGameTimer})
+OSDevtools.VehicleRuntime=vehicles
 local loaded,loadError=core.start()
 if not loaded then print('[os_devtools] Registro bloqueado: '..tostring(storageError or loadError)) end
 OSDevtools.bindCore({core=core,reply=out,guard=needAdmin})
 if loaded then
   for _,id in ipairs(GetPlayers()) do local alias,err=core.ensure(tonumber(id));if not alias then out(tonumber(id),err) end end
   print('[os_devtools] 0.1.3 listo. Datos conservados; /setpj permanece retirado.')
+  if vehicles.onesync() then
+    local created,missing=vehicles.restore()
+    missingTypes=missing
+    print(('[os_devtools] Vehiculos fijos restaurados: %d. Sin tipo conocido (se completan al entrar un administrador): %d.'):format(created,#missing))
+  else print('[os_devtools] OneSync desactivado: los vehiculos fijos no se restauran.') end
 end
 exports('GetBalance',function(alias,account)
   local c=state.characters[alias]

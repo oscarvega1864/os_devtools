@@ -18,27 +18,44 @@ local function applyLivery(vehicle,index,kind)
   if kind=='native' then SetVehicleLivery(vehicle,index)
   elseif kind=='mod48' then SetVehicleMod(vehicle,48,index,false) end
 end
-RegisterNetEvent('osdev:spawnVehicle',function(data)
-  local model=GetHashKey(data.model)
-  if not IsModelInCdimage(model) or not IsModelAVehicle(model) then
-    return TriggerServerEvent('osdev:spawned',data.nonce,0,'modelo invalido')
-  end
-  RequestModel(model)
-  local deadline=GetGameTimer()+7500
-  while not HasModelLoaded(model) and GetGameTimer()<deadline do Wait(0) end
-  if not HasModelLoaded(model) then return TriggerServerEvent('osdev:spawned',data.nonce,0,'timeout modelo') end
-  local p=data.position
-  local vehicle=CreateVehicle(model,p.x+3.0,p.y+2.0,p.z+0.2,p.h,true,true)
-  SetModelAsNoLongerNeeded(model)
-  if vehicle==0 or not DoesEntityExist(vehicle) then return TriggerServerEvent('osdev:spawned',data.nonce,0,'CreateVehicle fallo; revisar entity lockdown') end
-  SetVehicleColours(vehicle,data.primary,data.secondary)
-  SetVehicleNumberPlateText(vehicle,data.plate)
-  if data.livery~=nil then applyLivery(vehicle,data.livery,data.liveryType) end
-  SetVehicleOnGroundProperly(vehicle)
-  local deadlineNet=GetGameTimer()+3000
-  while not NetworkGetEntityIsNetworked(vehicle) and GetGameTimer()<deadlineNet do Wait(0) end
-  local netId=NetworkGetEntityIsNetworked(vehicle) and NetworkGetNetworkIdFromEntity(vehicle) or 0
-  TriggerServerEvent('osdev:spawned',data.nonce,netId,netId==0 and 'network id unavailable' or nil)
+-- El servidor crea los vehiculos (CREATE_VEHICLE_SERVER_SETTER) y necesita el tipo del modelo,
+-- que solo el cliente puede consultar. Trenes no admitidos; remolques se tratan como automovil.
+local function modelType(name)
+  if type(name)~='string' or not name:match('^[%w_]+$') then return false end
+  local model=GetHashKey(name)
+  if not IsModelInCdimage(model) or not IsModelAVehicle(model) or IsThisModelATrain(model) then return false end
+  if IsThisModelAHeli(model) then return 'heli' end
+  if IsThisModelAPlane(model) then return 'plane' end
+  if IsThisModelABoat(model) or IsThisModelAJetski(model) then return 'boat' end
+  if IsThisModelABike(model) or IsThisModelABicycle(model) then return 'bike' end
+  if GetVehicleClassFromName(model)==14 then return 'submarine' end -- clase 14 que no es barco
+  return 'automobile'
+end
+RegisterNetEvent('osdev:inspectVehicleModels',function(nonce,models)
+  if source~=65535 or type(models)~='table' then return end
+  local result={}
+  for _,name in ipairs(models) do if type(name)=='string' then result[name]=modelType(name) end end
+  TriggerServerEvent('osdev:vehicleModelTypes',nonce,result)
+end)
+-- Aspecto de los vehiculos de Devtools: lo aplica solo quien controla la entidad, que lo sincroniza.
+AddStateBagChangeHandler('osdev',nil,function(bagName,_,value)
+  if type(value)~='table' then return end
+  CreateThread(function()
+    local vehicle,deadline=0,GetGameTimer()+5000
+    while GetGameTimer()<deadline do
+      vehicle=GetEntityFromStateBagName(bagName)
+      if vehicle~=0 and DoesEntityExist(vehicle) then break end
+      Wait(100)
+    end
+    if vehicle==0 or not DoesEntityExist(vehicle) or not IsEntityAVehicle(vehicle) or NetworkGetEntityOwner(vehicle)~=PlayerId() then return end
+    if type(value.plate)=='string' then SetVehicleNumberPlateText(vehicle,value.plate) end
+    if tonumber(value.primary) and tonumber(value.secondary) then SetVehicleColours(vehicle,value.primary,value.secondary) end
+    if tonumber(value.livery) then applyLivery(vehicle,value.livery,value.liveryType) end
+  end)
+end)
+CreateThread(function()
+  while not NetworkIsSessionStarted() do Wait(500) end
+  TriggerServerEvent('osdev:vehiclesReady')
 end)
 local function currentVehicle()
   local ped=PlayerPedId()

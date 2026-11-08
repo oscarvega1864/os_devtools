@@ -45,6 +45,17 @@ Los comandos físicos utilizan la posición del administrador; el destinatario s
 - `/setpropiedad <numero> <destino>` y `/setnegocio <id> <destino>` asignan el titular.
 - Cada negocio de un tipo conocido tiene un blip con su nombre; sprite y color por categoría en `config/business.lua`. Los blips se envían al entrar y solo cuando cambian los negocios; el cliente mantiene uno por ID, sin duplicados al reconectar.
 
+## Vehículos
+
+Requiere OneSync. El servidor crea todos los vehículos de Devtools con `CREATE_VEHICLE_SERVER_SETTER`; ninguno depende de un network ID guardado.
+
+- `/crearvehiculo <modelo> <color1> [color2] [temporal|fijo] [destino]`: el cliente del administrador solo informa del tipo del modelo (automóvil, moto, barco, helicóptero, avión, submarino). Un modelo inexistente no crea registro. El vehículo aparece 4 m delante, con matrícula `OS000123`, colores y un state bag `osdev` (ID, matrícula, colores, livery) que aplica quien controla la entidad.
+- Fijos: modo huérfano `KeepEntity`; posición guardada cada 30 s si se movió más de 1 m o giró más de 5°, y al parar el recurso o apagar el servidor. Tras reiniciar el servidor se recrean en esa posición. Antes de crear se busca la entidad por state bag o matrícula, así que reiniciar solo el recurso no duplica.
+- Temporales: se retiran al parar el recurso y no se restauran.
+- Fijos antiguos sin tipo guardado: se completa el tipo cuando entra un administrador (`osdev.assets`) y entonces se restauran.
+- `/recuperarvehiculo <id>`: rechaza duplicados; si no existe, lo recrea delante del administrador.
+- Trenes no admitidos; remolques se crean como automóvil.
+
 ## Posición, muerte y aparición
 
 - `/guardarpos` y `/ultimaubicacion`: personales; posición viva válida, desconexión y muerte se distinguen.

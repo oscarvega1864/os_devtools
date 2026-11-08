@@ -8,11 +8,6 @@ test('Explicit character and numeric alias syntax cannot be confused with player
     c.command('crearpersonaje',1,{'1','123'});local aliasId=c.snapshot().characters['123'].id
     assert(c.core.resolve('alias:123')=='123' and not c.core.resolve('123') and c.core.resolve('char:'..aliasId)=='123')
 end)
-test('Vehicle recovery does not issue duplicate simultaneous spawn requests for one record',function()
-    local c=fixture();c.command('recuperarvehiculo',1,{'1'});local count=#c.messages
-    c.command('recuperarvehiculo',1,{'1'})
-    for index=count+1,#c.messages do assert(c.messages[index].name~='osdev:spawnVehicle') end
-end)
 test('Server spawn timeout requests one safe fallback even if client timeout delivery is late',function()
     local c=fixture();assert(c.core.requestSpawn(1,'connect'));c.clock=c.clock+20000;assert(c.core.observe(1))
     local context=c.messages[#c.messages].args[1];assert(context.reason=='safe_fallback')
@@ -282,4 +277,58 @@ test('Legacy properties with type and name remain valid and keep their metadata'
     local c=fixture({['data.json']=json.encode(data)});local p=c.snapshot().properties['7']
     assert(p.type=='casa' and p.name=='villa')
     c.command('listpropiedades',1);assert(c.text(1):find('Propiedad #7 (villa)',1,true))
+end)
+
+local function answer(c,source,types)
+    for i=#c.messages,1,-1 do local m=c.messages[i]
+        if m.name=='osdev:inspectVehicleModels' and m.source==source then _G.source=source;c.net['osdev:vehicleModelTypes'](m.args[1],types);return true end
+    end
+    error('No inspection request')
+end
+local function entities(c) local n=0;for _ in pairs(c.world) do n=n+1 end;return n end
+test('crearvehiculo is created by the server ahead of the admin after a model type check, with plate, colours and state bag',function()
+    local c=fixture();c.command('crearvehiculo',1,{'rebla','1','1','fijo','1'});assert(entities(c)==0)
+    answer(c,1,{rebla='automobile'})
+    local v=c.snapshot().vehicles['2'];assert(v.vtype=='automobile' and v.fixed and v.owner=='oscar_vega' and v.plate=='OS000002')
+    assert(math.abs(v.position.x-6)<0.001 and math.abs(v.position.y-20)<0.001 and v.position.h==90)
+    local e=next(c.world);local w=c.world[e]
+    assert(w.kind=='automobile' and w.plate=='OS000002' and w.orphan==2 and w.colours[1]==1 and w.state.osdev.id==2)
+    local before=c.writes;c.command('crearvehiculo',1,{'notacar','0'});answer(c,1,{notacar=false})
+    assert(c.writes==before and entities(c)==1 and not c.snapshot().vehicles['3'])
+    source=2;c.net['osdev:vehicleModelTypes']('1:1',{rebla='automobile'});assert(c.writes==before)
+end)
+test('Fixed vehicles are recreated after a server restart at their last saved position and never duplicated on resource restart',function()
+    local c=fixture();c.command('crearvehiculo',1,{'rebla','1','1','fijo'});answer(c,1,{rebla='automobile'})
+    c.command('crearvehiculo',1,{'faggio','0','temporal'});answer(c,1,{faggio='bike'});assert(entities(c)==2)
+    local e;for handle,w in pairs(c.world) do if w.plate=='OS000002' then e=handle end end
+    c.world[e].point={x=500,y=600,z=40};c.world[e].h=180
+    assert(OSDevtools.VehicleRuntime.savePositions('periodic'));local before=c.writes
+    assert(not OSDevtools.VehicleRuntime.savePositions('periodic'));assert(c.writes==before)
+    local p=c.snapshot().vehicles['2'].position;assert(p.x==500 and p.y==600 and p.h==180)
+    c.event('onResourceStop',nil,'os_devtools');assert(entities(c)==1 and c.world[e])
+    local again=fixture(c.files,{world=c.world,nextEntity=c.nextEntity});assert(entities(again)==1)
+    local server=fixture(c.files);assert(entities(server)==1)
+    local _,w=next(server.world);assert(w.plate=='OS000002' and w.point.x==500 and w.h==180 and w.kind=='automobile')
+end)
+test('Old fixed vehicles without a type are completed by an admin client, persisted and then restored',function()
+    local data=legacy();data.vehicles['1'].position={x=1,y=2,z=3,h=0,bucket=0}
+    local c=fixture({['data.json']=json.encode(data)});assert(entities(c)==0)
+    source=2;c.net['osdev:vehiclesReady']();for _,m in ipairs(c.messages) do assert(m.name~='osdev:inspectVehicleModels') end
+    source=1;c.net['osdev:vehiclesReady']();answer(c,1,{sultan='automobile'})
+    assert(c.snapshot().vehicles['1'].vtype=='automobile' and entities(c)==1)
+    local _,w=next(c.world);assert(w.plate=='OS000001' and w.point.x==1)
+end)
+test('recuperarvehiculo refuses duplicates and recreates a missing vehicle ahead of the admin',function()
+    local c=fixture();c.command('crearvehiculo',1,{'rebla','1','1','fijo'});answer(c,1,{rebla='automobile'})
+    c.command('recuperarvehiculo',1,{'2'});assert(entities(c)==1 and c.text(1):find('ya existe en el mundo',1,true))
+    for handle in pairs(c.world) do c.world[handle]=nil end
+    c.players[1].point={x=100,y=200,z=30};c.command('recuperarvehiculo',1,{'2'})
+    assert(entities(c)==1 and math.abs(c.snapshot().vehicles['2'].position.x-96)<0.001)
+    c.command('recuperarvehiculo',1,{'1'});answer(c,1,{sultan='automobile'})
+    assert(entities(c)==2 and c.snapshot().vehicles['1'].vtype=='automobile')
+end)
+test('Without OneSync no vehicle is created or registered',function()
+    local c=fixture(nil,{onesync='off'});local before=c.writes
+    c.command('crearvehiculo',1,{'rebla','1'});assert(c.writes==before and entities(c)==0)
+    for _,m in ipairs(c.messages) do assert(m.name~='osdev:inspectVehicleModels') end
 end)
