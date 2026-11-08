@@ -207,7 +207,8 @@ function OSDevtools.Core.new(options)
         spawnCounter=spawnCounter+1
         local token=('%d:%d:%d'):format(source,spawnCounter,options.clock())
         pending[source]={id=id,token=token,position=point,at=options.clock(),expires=options.clock()+config.SpawnMilliseconds,fallback=fallback==true}
-        options.spawn(source,{token=token,position=point,reason=reason})
+        local alias=core.lookup(source);local c=alias and state.characters[alias]
+        options.spawn(source,{token=token,position=point,reason=reason,appearance=c and c.id==id and u.copy(c.appearance) or nil})
         return true
     end
     function core.spawnAck(source,token)
@@ -282,6 +283,38 @@ function OSDevtools.Core.new(options)
         return core.change(actor,'setspawn '..state.characters[alias].id,function(d)
             d.characters[alias].customSpawn=stamp(point,'assigned_spawn');d.characters[alias].spawnOverridePending=true;return true
         end)
+    end
+    -- Solo el personaje activo, vivo y fuera de una aparicion puede guardar su apariencia;
+    -- asi una apariencia anterior nunca se escribe sobre el personaje recien seleccionado.
+    function core.saveAppearance(source,value)
+        local context=active[source];local alias=context and context.alias
+        local c=alias and core.lookup(source)==alias and state.characters[alias]
+        if not c then return false,'Identidad no disponible.' end
+        if pending[source] then return false,'Aparicion en curso; apariencia no guardada.' end
+        if c.life=='dead' then return false,'Personaje muerto; apariencia no guardada.' end
+        local appearance=domain.normalizeAppearance(value)
+        if not appearance then return false,'Apariencia invalida; no se guarda.' end
+        if u.equal(appearance,c.appearance) then return true,'unchanged' end
+        local ok,err=core.change(source,'appearance '..c.id,function(d) d.characters[alias].appearance=appearance;return true end)
+        return ok,err
+    end
+    -- Importacion administrativa: escribe la apariencia de un personaje aunque este desconectado.
+    function core.importAppearance(actor,target,value)
+        local alias,err=core.resolve(target);if not alias then return false,err end
+        local appearance=domain.normalizeAppearance(value)
+        if not appearance then return false,'Apariencia invalida; no se importa.' end
+        local c=state.characters[alias]
+        local ok,reason=core.change(actor,'import_appearance '..c.id,function(d) d.characters[alias].appearance=appearance;return true end)
+        if not ok then return false,reason end
+        return true,alias
+    end
+    -- Jugadores conectados con ese personaje activo.
+    function core.sourcesOf(alias)
+        local result={}
+        for player,context in pairs(active) do
+            if context.alias==alias and options.connected(player) and core.lookup(player)==alias then result[#result+1]=player end
+        end
+        return result
     end
     function core.snapshot() return core.status() and u.copy(state) or nil end
     return core

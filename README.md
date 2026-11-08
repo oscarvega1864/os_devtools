@@ -48,6 +48,17 @@ Los comandos físicos utilizan la posición del administrador; el destinatario s
 
 La muerte se verifica mediante entidad y salud del servidor; el aviso del cliente solo solicita esa comprobación. Se conserva un historial acotado de 64 eventos con ID secuencial y causa `unknown`, sin inventar una causa. `lastDeathPosition` no sustituye a `lastValidPosition` ni a `lastLogoutPosition`.
 
+### Apariencia
+
+Cada personaje guarda su modelo, los 12 componentes de ropa, accesorios (sombrero, gafas, orejas, reloj, pulsera) y, en `mp_m_freemode_01`/`mp_f_freemode_01`, herencia facial, 20 rasgos, 13 superposiciones, pelo y ojos.
+
+- Guardado automático cada 10 s solo si el aspecto cambió (mínimo 8 s entre escrituras en el servidor). `/guardarropa` guarda al momento.
+- El servidor rechaza guardados durante una aparición, con el personaje muerto o con datos fuera de rango; así un aspecto anterior no se escribe sobre el personaje recién seleccionado.
+- Al aparecer, modelo y ropa se aplican con la pantalla en negro y se reaplican sobre el ped definitivo. Solo se aplican variaciones que existen en ese modelo.
+- Si el modelo guardado ya no existe (mod retirado), se usa `mp_m_freemode_01` sin borrar los datos y se bloquea el guardado automático hasta usar `/guardarropa`.
+- Un personaje sin aspecto guardado aparece con `mp_m_freemode_01` por defecto.
+- `importarropa <destinatario> <archivo>` (`osdev.identity`, también desde consola): importa un XML de Menyoo (`OutfitPedData`) copiado en `data/<archivo>.xml`, carpeta excluida de Git. Importa modelo, ropa, accesorios, herencia, rasgos, superposiciones, pelo y ojos; los tatuajes no se importan y se avisa. Se audita como `import_appearance` y, si el personaje está conectado, se aplica en el sitio; durante 15 s se ignoran sus guardados automáticos para que no pisen lo importado.
+
 `config/spawn.lua`: `Mode='spawnmanager'` exige iniciar el recurso oficial antes de Devtools. Devtools desactiva su auto-spawn, solicita la aparición mediante su API y confirma la posición desde el servidor. Espera colisiones, libera controles tras error/timeout y permite un único intento de respaldo; tras morir utiliza el hospital. No se deben activar dos dueños del respawn. Con `Mode='external'` Devtools no ejecuta apariciones: el recurso dueño puede consultar `GetCharacterSpawn` y usar el evento local de cambio de personaje. Ese adaptador externo no se implementa aquí.
 
 API oficial usada: [setAutoSpawn](https://docs.fivem.net/docs/resources/spawnmanager/functions/setAutoSpawn/), [spawnPlayer](https://docs.fivem.net/docs/resources/spawnmanager/functions/spawnPlayer/).

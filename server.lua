@@ -211,6 +211,7 @@ RegisterCommand('oscomandos',function(src)
   for _,line in ipairs(lines) do out(src,line) end
   out(src,'PERSONAJES: /personaje [alias|char:id]; ADMIN: /crearpersonaje, /seleccionarpersonaje, /vincularpersonaje. /setpj retirado.')
   out(src,'POSICION: /guardarpos, /ultimaubicacion; ADMIN: /setspawn <destinatario>, /tpusuario <id>.')
+  out(src,'APARIENCIA: se guarda sola al cambiar; /guardarropa la guarda al momento.')
 end,false)
 
 RegisterCommand('setjob',function(src,args)

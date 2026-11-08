@@ -24,6 +24,55 @@ function domain.position(value, dated)
         and (not dated or (u.integer(value.at,0,253402300799) and u.text(value.reason,32)))
 end
 function domain.number(value) return tonumber(('%.12g'):format(value)) end
+-- Apariencia del ped: modelo, 12 componentes, accesorios y, en modelos freemode, cabeza.
+-- Solo admite enteros/decimales acotados; no se interpreta ningun texto del cliente.
+local function unit(value,minimum) return u.finite(value) and value>=(minimum or 0) and value<=1 end
+local function head(value)
+    if not u.object(value,{blend=true,features=true,overlays=true,hair=true,eyes=true}) then return false end
+    local b=value.blend
+    if b~=nil then
+        if not u.object(b,{sf=true,ss=true,st=true,kf=true,ks=true,kt=true,sm=true,km=true,tm=true}) then return false end
+        for _,key in ipairs({'sf','ss','st','kf','ks','kt'}) do if not u.integer(b[key],0,255) then return false end end
+        if not unit(b.sm) or not unit(b.km) or not unit(b.tm) then return false end
+    end
+    if not u.array(value.features,20) or #value.features~=20 then return false end
+    for _,feature in ipairs(value.features) do if not unit(feature,-1) then return false end end
+    if not u.array(value.overlays,13) or #value.overlays~=13 then return false end
+    for _,o in ipairs(value.overlays) do
+        if not u.object(o,{v=true,o=true,ct=true,c=true,c2=true}) or not u.integer(o.v,0,255) or not unit(o.o)
+            or not u.integer(o.ct,0,2) or not u.integer(o.c,0,63) or not u.integer(o.c2,0,63) then return false end
+    end
+    return u.object(value.hair,{c=true,h=true}) and u.integer(value.hair.c,0,63) and u.integer(value.hair.h,0,63)
+        and u.integer(value.eyes,0,31)
+end
+function domain.appearance(value)
+    if not u.object(value,{model=true,components=true,props=true,head=true})
+        or not u.integer(value.model,-2147483648,4294967295) or value.model==0 then return false end
+    if not u.array(value.components,12) or #value.components~=12 then return false end
+    for _,c in ipairs(value.components) do
+        if not u.object(c,{d=true,t=true,p=true}) or not u.integer(c.d,0,4095) or not u.integer(c.t,0,255) or not u.integer(c.p,0,3) then return false end
+    end
+    if not u.array(value.props,8) then return false end
+    local seen={}
+    for _,p in ipairs(value.props) do
+        if not u.object(p,{i=true,d=true,t=true}) or not u.integer(p.i,0,12) or seen[p.i]
+            or not u.integer(p.d,-1,4095) or not u.integer(p.t,-1,255) then return false end
+        seen[p.i]=true
+    end
+    return value.head==nil or head(value.head)
+end
+-- Copia normalizada: los decimales se fijan con la misma precision que las posiciones.
+function domain.normalizeAppearance(value)
+    if not domain.appearance(value) then return nil end
+    local copy=u.copy(value)
+    if copy.head then
+        local b=copy.head.blend
+        if b then for _,key in ipairs({'sm','km','tm'}) do b[key]=domain.number(b[key]) end end
+        for index,feature in ipairs(copy.head.features) do copy.head.features[index]=domain.number(feature) end
+        for _,o in ipairs(copy.head.overlays) do o.o=domain.number(o.o) end
+    end
+    return copy
+end
 function domain.normalizePosition(value,reason)
     if not u.object(value) then return nil end
     local point={x=value.x,y=value.y,z=value.z,h=value.h,bucket=value.bucket,
@@ -85,6 +134,7 @@ function domain.snapshot(data)
             if c[field] and not domain.position(c[field],true) then return nil,'Posicion de personaje invalida.' end
         end
         if c.life ~= nil and c.life ~= 'alive' and c.life ~= 'dead' then return nil,'Estado vital invalido.' end
+        if c.appearance ~= nil and not domain.appearance(c.appearance) then return nil,'Apariencia de personaje invalida.' end
         if type(c.spawnOverridePending)~='nil' and type(c.spawnOverridePending)~='boolean' then return nil,'Indicador de spawn invalido.' end
         if not u.integer(c.nextDeath,1,2147483647) or not u.array(c.deaths,OSDevtools.CoreConfig.MaxDeaths) then return nil,'Historial de muertes invalido.' end
         local previous=0

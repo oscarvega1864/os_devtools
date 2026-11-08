@@ -160,3 +160,88 @@ test('Shutdown/stop checkpoints preserve positions, while external spawn ownersh
     OSDevtools.SpawnConfig.Mode='external';local before=#c.messages
     assert(not c.core.requestSpawn(1,'connect'));assert(#c.messages==before)
 end)
+
+local function look(model,drawable)
+    local components={};for i=1,12 do components[i]={d=i==12 and drawable or 0,t=0,p=0} end
+    local overlays={};for i=1,13 do overlays[i]={v=255,o=1,ct=0,c=0,c2=0} end
+    local features={};for i=1,20 do features[i]=0 end;features[1]=0.123
+    return {model=model,components=components,props={{i=0,d=-1,t=-1},{i=1,d=3,t=0}},
+        head={blend={sf=21,ss=4,st=0,kf=21,ks=4,kt=0,sm=0.5,km=0.25,tm=0},features=features,overlays=overlays,hair={c=3,h=5},eyes=2}}
+end
+test('Appearance is saved per active character, survives restart and travels only with that character spawn',function()
+    local c=fixture();c.core.ensure(1)
+    assert(c.core.saveAppearance(1,look(1885233650,7)))
+    local saved=c.snapshot().characters.oscar_vega.appearance
+    assert(saved.model==1885233650 and saved.components[12].d==7 and saved.head.blend.km==0.25)
+    local restarted=fixture(c.files);assert(restarted.core.requestSpawn(1,'connect'))
+    local context=restarted.messages[#restarted.messages].args[1]
+    assert(context.appearance and context.appearance.components[12].d==7);ack(restarted,1)
+    restarted.command('crearpersonaje',1,{'1','second_person'});restarted.command('seleccionarpersonaje',1,{'1','second_person'})
+    local switched
+    for _,m in ipairs(restarted.messages) do if m.name=='osdev:spawnCharacter' then switched=m.args[1] end end
+    assert(switched.reason=='character_switch' and switched.appearance==nil)
+    assert(restarted.snapshot().characters.oscar_vega.appearance.components[12].d==7)
+end)
+test('Appearance writes are skipped when unchanged and refused while spawning, dead or invalid',function()
+    local c=fixture();c.core.ensure(1)
+    assert(c.core.saveAppearance(1,look(1885233650,7)));local before=c.writes
+    local ok,detail=c.core.saveAppearance(1,look(1885233650,7));assert(ok and detail=='unchanged' and c.writes==before)
+    assert(c.core.requestSpawn(1,'connect'));assert(not c.core.saveAppearance(1,look(1885233650,9)))
+    ack(c,1);before=c.writes
+    local bad=look(1885233650,7);bad.components[13]={d=0,t=0,p=0};assert(not c.core.saveAppearance(1,bad))
+    bad=look(0,7);assert(not c.core.saveAppearance(1,bad))
+    bad=look(1885233650,7);bad.head.features[1]=2;assert(not c.core.saveAppearance(1,bad))
+    bad=look(1885233650,7);bad.extra='x';assert(not c.core.saveAppearance(1,bad))
+    c.players[1].health=0;assert(c.core.observe(1));local afterDeath=c.writes
+    assert(not c.core.saveAppearance(1,look(1885233650,9)));assert(c.writes==afterDeath and before+1==afterDeath)
+    assert(c.snapshot().characters.oscar_vega.appearance.components[12].d==7)
+end)
+test('Appearance net event rate-limits automatic saves and answers manual saves',function()
+    local c=fixture();c.core.ensure(1)
+    source=1;c.net['osdev:saveAppearance'](look(1885233650,7),false);local before=c.writes
+    c.clock=c.clock+1000;source=1;c.net['osdev:saveAppearance'](look(1885233650,8),false);assert(c.writes==before)
+    c.clock=c.clock+1000;source=1;c.net['osdev:saveAppearance'](look(1885233650,8),true)
+    assert(c.writes==before+1 and c.text(1):find('Ropa y aspecto guardados',1,true))
+    c.clock=c.clock+500;source=1;c.net['osdev:saveAppearance'](look(1885233650,9),true);assert(c.writes==before+1)
+end)
+test('Stored data with a corrupted appearance is rejected instead of loaded or overwritten',function()
+    local c=fixture();c.core.ensure(1);assert(c.core.saveAppearance(1,look(1885233650,7)))
+    local data=c.snapshot();data.characters.oscar_vega.appearance.components[1].d=-5
+    assert(not OSDevtools.State.snapshot(data))
+end)
+
+local MENYOO=[[<?xml version="1.0" encoding="ISO-8859-1"?>
+<OutfitPedData><ModelHash>0x705E61F2</ModelHash><PedProperties><PedProps><_0>5,2</_0><_1>-1,-1</_1><_6>-1,-1</_6></PedProps>
+<PedComps><_0>0,0</_0><_2>21,0</_2><_11>15,3</_11></PedComps><HeadFeatures WasInArray="true"><ShapeAndSkinTone><ShapeFatherId>3</ShapeFatherId><ShapeMotherId>4</ShapeMotherId><ShapeOverrideId>0</ShapeOverrideId><ToneFatherId>5</ToneFatherId><ToneMotherId>0</ToneMotherId><ToneOverrideId>1</ToneOverrideId><ShapeVal>0.95</ShapeVal><ToneVal>0</ToneVal><OverrideVal>0</OverrideVal><IsP>0</IsP></ShapeAndSkinTone>
+<HairColour>58</HairColour><HairColourStreaks>3</HairColourStreaks><EyeColour>2</EyeColour><FacialFeatures><_0>0.25</_0><_19>-1</_19></FacialFeatures>
+<Overlays><_0 index="255" colour="0" colourSecondary="0" opacity="1"/><_1 index="7" colour="4" colourSecondary="0" opacity="1"/><_7 index="0" colour="0" colourSecondary="0" opacity="0.2"/></Overlays></HeadFeatures>
+<TattooLogoDecals><:anonymous collection="0x23a7a83b" value="0x13e7aad"/></TattooLogoDecals></PedProperties></OutfitPedData>]]
+test('Menyoo XML maps model, clothes, props, head blend, features, overlays, hair and eyes',function()
+    local a,skipped=OSDevtools.AppearanceXml.parse(MENYOO)
+    assert(a and skipped=='tatuajes/logos' and a.model==1885233650)
+    assert(a.components[3].d==21 and a.components[12].d==15 and a.components[12].t==3 and a.components[5].d==0)
+    assert(a.props[1].i==0 and a.props[1].d==5 and a.props[1].t==2 and a.props[2].d==-1)
+    local b=a.head.blend;assert(b.sf==3 and b.ss==4 and b.kf==5 and b.kt==1 and b.sm==0.95 and b.km==0)
+    assert(a.head.features[1]==0.25 and a.head.features[20]==-1 and #a.head.features==20)
+    assert(a.head.overlays[1].v==255 and a.head.overlays[2].v==7 and a.head.overlays[2].c==4 and a.head.overlays[2].ct==1)
+    assert(a.head.overlays[8].o==0.2 and a.head.overlays[13].v==255 and #a.head.overlays==13)
+    assert(a.head.hair.c==58 and a.head.hair.h==3 and a.head.eyes==2)
+    local female=OSDevtools.AppearanceXml.parse(MENYOO:gsub('0x705E61F2','0x9C9EFFD8'))
+    assert(female.model==-1667301416)
+    assert(not OSDevtools.AppearanceXml.parse('<root/>'))
+    assert(not OSDevtools.AppearanceXml.parse(MENYOO:gsub('<HairColour>58','<HairColour>99')))
+end)
+test('importarropa requires identity permission, writes an audited import and applies it to the connected owner',function()
+    local c=fixture();c.core.ensure(1);c.core.ensure(2);c.files['data/look_test.xml']=MENYOO
+    local before=c.writes;c.command('importarropa',2,{'1','look_test'});assert(c.writes==before)
+    c.command('importarropa',1,{'1','../core.a'});c.command('importarropa',1,{'1','missing'});assert(c.writes==before)
+    c.command('importarropa',1,{'2','look_test.xml'})
+    local d=c.snapshot();assert(d.characters.client_test.appearance.head.hair.c==58 and not d.characters.oscar_vega.appearance)
+    assert(d.audit[#d.audit].operation:find('import_appearance',1,true))
+    local applied=false;for _,m in ipairs(c.messages) do if m.name=='osdev:applyAppearance' and m.source==2 then applied=true end end;assert(applied)
+    assert(c.text(1):find('no incluye: tatuajes',1,true))
+    source=2;local count=c.writes;c.net['osdev:saveAppearance'](d.characters.client_test.appearance,false);c.clock=c.clock+9000
+    local old=OSDevtools.Util.copy(d.characters.client_test.appearance);old.components[12].d=1
+    source=2;c.net['osdev:saveAppearance'](old,false);assert(c.writes==count)
+    c.clock=c.clock+16000;source=2;c.net['osdev:saveAppearance'](old,false);assert(c.writes==count+1)
+end)

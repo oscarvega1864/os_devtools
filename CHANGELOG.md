@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — En desarrollo
+
+- Apariencia por personaje: modelo, ropa, accesorios y cabeza freemode, validada y persistida en el registro; restauración al aparecer con la pantalla en negro; guardado automático por cambios y `/guardarropa`. Un modelo ausente conserva los datos y bloquea el guardado automático.
+- `importarropa`: importación auditada de XML de Menyoo (OutfitPedData) desde `data/`, con aplicación inmediata al jugador conectado.
+- Devtools es el único dueño del autospawn de spawnmanager: un gametype que fuerce respawn ya no mueve al personaje ni cambia su modelo.
+
 ## 0.1.3 — Identidad persistente y posiciones
 
 - Cuenta nativa, personaje activo, ID inmutable oschar y alias separados; resolución explícita por conexión, alias o char:ID. /setpj continúa retirado por la instrucción posterior de identidad automática.

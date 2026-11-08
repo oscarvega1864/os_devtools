@@ -1,8 +1,12 @@
 local mode=OSDevtools.SpawnConfig.Mode
 local frozen=false
+local currentPlan=nil
 local function release()
     if frozen then FreezeEntityPosition(PlayerPedId(),false);frozen=false end
     DoScreenFadeIn(500)
+    -- El guardado automatico solo se reanuda cuando la aparicion termina.
+    OSDevtools.Appearance.spawning=false
+    if currentPlan then OSDevtools.Appearance.settled(currentPlan);currentPlan=nil end
 end
 local controller=OSDevtools.SpawnClient.new({
     schedule=SetTimeout,
@@ -10,20 +14,37 @@ local controller=OSDevtools.SpawnClient.new({
     failed=function(token) TriggerServerEvent('osdev:spawnFailed',token) end,
     release=release,
     notify=function(text) TriggerEvent('chat:addMessage',{args={'OS DEV',text}}) end,
-    spawn=function(point,callback,isCurrent)
+    spawn=function(point,callback,isCurrent,context)
         if GetResourceState('spawnmanager')~='started' then callback(false);return end
-        exports.spawnmanager:setAutoSpawn(false)
-        exports.spawnmanager:spawnPlayer({x=point.x,y=point.y,z=point.z,heading=point.h,skipFade=false},function()
+        local appearance=OSDevtools.Appearance
+        appearance.spawning=true
+        CreateThread(function()
+            -- El modelo y la ropa se aplican con la pantalla en negro: spawnmanager
+            -- retira el fundido antes de devolver el control.
+            local plan=appearance.plan(context and context.appearance)
+            DoScreenFadeOut(500)
+            local fade=GetGameTimer()+1500
+            while not IsScreenFadedOut() and GetGameTimer()<fade do Wait(0) end
             if not isCurrent() then return end
-            CreateThread(function()
+            if not appearance.setModel(plan) then plan={model=GetEntityModel(PlayerPedId()),data=nil,locked=true} end
+            appearance.apply(PlayerPedId(),plan)
+            if not isCurrent() then return end
+            exports.spawnmanager:setAutoSpawn(false)
+            exports.spawnmanager:spawnPlayer({x=point.x,y=point.y,z=point.z,heading=point.h,skipFade=false},function()
                 if not isCurrent() then return end
-                local ped=PlayerPedId();FreezeEntityPosition(ped,true);frozen=true
-                RequestCollisionAtCoord(point.x,point.y,point.z)
-                local deadline=GetGameTimer()+5000
-                while isCurrent() and not HasCollisionLoadedAroundEntity(ped) and GetGameTimer()<deadline do Wait(50) end
-                if not isCurrent() then return end
-                ClearPedBloodDamage(ped)
-                callback(HasCollisionLoadedAroundEntity(ped))
+                CreateThread(function()
+                    if not isCurrent() then return end
+                    local ped=PlayerPedId();FreezeEntityPosition(ped,true);frozen=true
+                    -- La resurreccion puede recrear el ped: se reaplica sobre el ped definitivo.
+                    appearance.apply(ped,plan)
+                    RequestCollisionAtCoord(point.x,point.y,point.z)
+                    local deadline=GetGameTimer()+5000
+                    while isCurrent() and not HasCollisionLoadedAroundEntity(ped) and GetGameTimer()<deadline do Wait(50) end
+                    if not isCurrent() then return end
+                    ClearPedBloodDamage(ped)
+                    currentPlan=plan
+                    callback(HasCollisionLoadedAroundEntity(ped))
+                end)
             end)
         end)
     end

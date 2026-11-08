@@ -1,6 +1,7 @@
 function OSDevtools.bindCore(options)
     local core,reply,guard=options.core,options.reply,options.guard
     local resource=GetCurrentResourceName()
+    local appearanceAt,appearanceHold={},{} -- limite de guardado y bloqueo tras importar, por jugador
     local function identityGuard(source) return guard(source,'osdev.identity') end
     local function result(source,ok,err,detail) reply(source,ok and ('Operacion persistida'..(detail and ': '..detail or '')..'.') or (err or 'Operacion rechazada.')) end
     local function label(value)
@@ -45,6 +46,24 @@ function OSDevtools.bindCore(options)
             reply(source,p and ('%s: %.4f %.4f %.4f h=%.2f bucket=%d fecha=%d motivo=%s'):format(field,p.x,p.y,p.z,p.h,p.bucket,p.at,p.reason) or (field..': sin registro'))
         end
     end,false)
+    -- importarropa <destinatario> <archivo>: XML de Menyoo en data/<archivo>.xml (carpeta fuera de Git).
+    RegisterCommand('importarropa',function(source,args)
+        if not identityGuard(source) then return end
+        local file=args[2] and args[2]:gsub('%.xml$','')
+        if #args~=2 or not file:match('^[%w_%-]+$') or #file>64 then return reply(source,'Uso: importarropa <idJugador|alias|char:id> <archivo> (XML de Menyoo en data/<archivo>.xml)') end
+        local text=LoadResourceFile(resource,'data/'..file..'.xml')
+        if not text then return reply(source,'No existe data/'..file..'.xml en os_devtools.') end
+        if not OSDevtools.AppearanceXml then return reply(source,'Lector XML no cargado: reinicia el servidor completo para que FiveM relea fxmanifest.lua.') end
+        local appearance,detail=OSDevtools.AppearanceXml.parse(text)
+        if not appearance then return reply(source,detail) end
+        local ok,alias=core.importAppearance(source,args[1],appearance)
+        if not ok then return reply(source,alias or 'Importacion rechazada.') end
+        for _,player in ipairs(core.sourcesOf(alias)) do
+            appearanceHold[player]=GetGameTimer()+15000
+            TriggerClientEvent('osdev:applyAppearance',player,appearance)
+        end
+        reply(source,'Apariencia importada en '..label('alias:'..alias)..(detail and (' (no incluye: '..detail..')') or '')..'.')
+    end,false)
     RegisterCommand('setspawn',function(source,args)
         if not guard(source,'osdev.assets') then return end
         local ok,err=core.setSpawn(source,args[1]);result(source,ok,err,label(args[1]))
@@ -71,12 +90,29 @@ function OSDevtools.bindCore(options)
     RegisterNetEvent('osdev:characterSpawned',function(token) core.spawnAck(source,token) end)
     RegisterNetEvent('osdev:spawnFailed',function(token) core.spawnFailed(source,token) end)
     RegisterNetEvent('osdev:deathObserved',function() core.observe(source) end)
+    -- Apariencia: guardado automatico (solo si cambia) y manual con /guardarropa.
+    RegisterNetEvent('osdev:saveAppearance',function(appearance,manual)
+        local player=source
+        if not OSDevtools.Util.integer(player,1,2147483647) then return end
+        manual=manual==true
+        local now=GetGameTimer();local last=appearanceAt[player]
+        -- Tras una importacion, un guardado automatico en vuelo no puede pisar lo importado.
+        if not manual and appearanceHold[player] and now<appearanceHold[player] then return end
+        if last and now>=last and now-last<(manual and 2000 or OSDevtools.CoreConfig.AppearanceMinMilliseconds) then
+            if manual then reply(player,'Espera unos segundos antes de volver a guardar la ropa.') end
+            return
+        end
+        appearanceAt[player]=now
+        local ok,detail=core.saveAppearance(player,appearance)
+        if manual then reply(player,ok and (detail=='unchanged' and 'Ropa y aspecto ya estaban guardados.' or 'Ropa y aspecto guardados en tu personaje.') or detail)
+        elseif not ok then print(('[os_devtools] apariencia no guardada para %d: %s'):format(player,tostring(detail))) end
+    end)
     AddEventHandler('playerJoining',function()
         local player=tonumber(source)
         SetTimeout(500,function() if GetPlayerName(player) then local alias,err=core.ensure(player);if not alias then reply(player,err) end end end)
     end)
     AddEventHandler('playerDropped',function()
-        local player=tonumber(source);core.drop(player);requested[player]=nil
+        local player=tonumber(source);core.drop(player);requested[player]=nil;appearanceAt[player]=nil;appearanceHold[player]=nil
     end)
     local function checkpoint(reason)
         local sources={};for _,id in ipairs(GetPlayers()) do sources[#sources+1]=tonumber(id) end

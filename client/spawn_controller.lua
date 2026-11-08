@@ -15,7 +15,7 @@ function OSDevtools.SpawnClient.new(options)
                 options.ack(current);options.schedule(500,acknowledge)
             end
             acknowledge()
-        end,function() return version==generation and busy end)
+        end,function() return version==generation and busy end,context)
         options.schedule(OSDevtools.SpawnConfig.TimeoutMilliseconds,function()
             if version~=generation or not busy then return end
             busy=false;options.release();options.failed(current);options.notify('Timeout de aparicion; revisar consola y colisiones.')
