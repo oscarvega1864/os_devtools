@@ -6,7 +6,7 @@ OSDevtools.CoreConfig = {
     AllowedBuckets={ [0]=true },
     DefaultSpawn={x=-1037.6,y=-2737.8,z=20.17,h=329,bucket=0},
     HospitalSpawn={x=298.63,y=-584.31,z=43.26,h=70,bucket=0},
-    IdentityReaders={os_inventory=true},
+    IdentityReaders={os_inventory=true,os_security=true}, -- os_security: objetos por personaje via os_inventory
     -- Respuesta policial NPC de GTA si nadie la ha cambiado con /policianpc (true = GTA normal).
     NpcPoliceDefault=true,
     -- Peatones y trafico de GTA si nadie lo ha cambiado con /npcs (true = GTA normal).
