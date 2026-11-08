@@ -12,7 +12,7 @@ server_scripts {
     'server/auth_identity.lua', 'server/authorization_hub.lua', 'server/auth_boot.lua',
     'server/identity_commands.lua', 'server/vehicles.lua', 'server.lua'
 }
-client_scripts { 'client.lua', 'client/appearance.lua', 'client/spawn_controller.lua', 'client/spawn.lua', 'client/business.lua' }
+client_scripts { 'client.lua', 'client/appearance.lua', 'client/spawn_controller.lua', 'client/spawn.lua', 'client/business.lua', 'client/world.lua' }
 
 ui_page 'html/index.html'
 files { 'html/index.html', 'html/style.css', 'html/app.js' }

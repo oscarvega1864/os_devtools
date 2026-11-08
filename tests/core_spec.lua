@@ -332,3 +332,34 @@ test('Without OneSync no vehicle is created or registered',function()
     c.command('crearvehiculo',1,{'rebla','1'});assert(c.writes==before and entities(c)==0)
     for _,m in ipairs(c.messages) do assert(m.name~='osdev:inspectVehicleModels') end
 end)
+
+test('policianpc toggles a persisted world setting, pushes it to every player and requires admin rights',function()
+    local c=fixture();local function last(source)
+        for i=#c.messages,1,-1 do local m=c.messages[i];if m.name=='osdev:worldSettings' and m.source==source then return m.args[1],i end end
+    end
+    c.command('policianpc',2);assert(c.text(2):find('ACTIVADA',1,true))
+    local before=c.writes;c.command('policianpc',2,{'off'});assert(c.writes==before)
+    c.command('policianpc',1,{'maybe'});assert(c.writes==before)
+    c.command('policianpc',1,{'off'})
+    assert(c.snapshot().settings.npcPolice==false and last(1).npcPolice==false and last(2).npcPolice==false)
+    local restarted=fixture(c.files);restarted.clock=restarted.clock+6000;source=2;restarted.net['osdev:requestWorldSettings']()
+    local settings;for i=#restarted.messages,1,-1 do local m=restarted.messages[i];if m.name=='osdev:worldSettings' and m.source==2 then settings=m.args[1];break end end
+    assert(settings and settings.npcPolice==false)
+    restarted.command('policianpc',1,{'on'});assert(restarted.snapshot().settings.npcPolice==true)
+    local data=restarted.snapshot();data.settings.npcPolice='no';assert(not OSDevtools.State.snapshot(data))
+end)
+
+test('npcs toggles persisted pedestrians and traffic independently of npc police and requires admin rights',function()
+    local c=fixture();local function last(fx,source)
+        for i=#fx.messages,1,-1 do local m=fx.messages[i];if m.name=='osdev:worldSettings' and m.source==source then return m.args[1] end end
+    end
+    c.command('npcs',2);assert(c.text(2):find('ACTIVADOS',1,true))
+    local before=c.writes;c.command('npcs',2,{'off'});c.command('npcs',1,{'nada'});assert(c.writes==before)
+    c.command('npcs',1,{'off'});local s=last(c,2);assert(s.ambientNpcs==false and s.npcPolice==true)
+    c.command('policianpc',1,{'off'});s=last(c,1);assert(s.ambientNpcs==false and s.npcPolice==false)
+    local restarted=fixture(c.files);assert(restarted.snapshot().settings.ambientNpcs==false)
+    restarted.clock=restarted.clock+6000;source=1;restarted.net['osdev:requestWorldSettings']()
+    s=last(restarted,1);assert(s.ambientNpcs==false and s.npcPolice==false)
+    restarted.command('npcs',1,{'on'});assert(restarted.snapshot().settings.ambientNpcs==true and restarted.snapshot().settings.npcPolice==false)
+    local data=restarted.snapshot();data.settings.extra=true;assert(not OSDevtools.State.snapshot(data))
+end)

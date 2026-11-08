@@ -152,6 +152,10 @@ function domain.snapshot(data)
         end
     end
     if data.nextCharacter < count+1 then return nil,'Contador de personajes inconsistente.' end
+    if data.settings ~= nil then
+        if not u.object(data.settings,{npcPolice=true,ambientNpcs=true}) then return nil,'Ajustes del mundo invalidos.' end
+        for _,value in pairs(data.settings) do if type(value) ~= 'boolean' then return nil,'Ajustes del mundo invalidos.' end end
+    end
     for account,alias in pairs(data.bindings) do if data.characters[alias].account ~= account then return nil,'Personaje activo de otra cuenta.' end end
     return true
 end

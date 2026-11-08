@@ -56,6 +56,21 @@ Requiere OneSync. El servidor crea todos los vehículos de Devtools con `CREATE_
 - `/recuperarvehiculo <id>`: rechaza duplicados; si no existe, lo recrea delante del administrador.
 - Trenes no admitidos; remolques se crean como automóvil.
 
+## Policía NPC
+
+`/policianpc on|off` (`osdev.admin`; sin argumentos muestra el estado). El ajuste se guarda en el registro, se aplica al momento a todos los jugadores y a los que entren después. Valor inicial: `NpcPoliceDefault` en `config/core.lua` (`true` = GTA normal).
+
+- `off`: nivel de búsqueda máximo 0 y limpieza continua, la policía ignora al jugador y se desactivan los despachos policiales y militares (1, 2, 4, 6–10, 12–15; la tabla oficial numera 12–15 de forma ambigua y se cubren todos).
+- No se borran entidades ni se impide crear policía ambiental; ambulancias (5), bomberos (3) y bandas (11) no se tocan. No afecta a policías jugadores ni a las alertas de OS Security.
+- Al parar el recurso con la policía desactivada, cada cliente restablece el comportamiento normal de GTA.
+
+## Peatones y tráfico
+
+`/npcs on|off` (`osdev.admin`; sin argumentos muestra el estado), independiente de `/policianpc`. Se guarda, se aplica a todos al momento y a quien entre después. Valor inicial: `AmbientNpcsDefault` en `config/core.lua`.
+
+- `off`: densidad 0 cada fotograma para peatones, peatones de escenario, tráfico, vehículos aleatorios y aparcados; sin camiones de basura ni barcos aleatorios. Los NPC que ya existen no se borran: desaparecen al alejarse.
+- Los vehículos de Devtools, de vMenu y los jugadores no se ven afectados.
+
 ## Posición, muerte y aparición
 
 - `/guardarpos` y `/ultimaubicacion`: personales; posición viva válida, desconexión y muerte se distinguen.

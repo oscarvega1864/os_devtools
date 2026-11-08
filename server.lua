@@ -225,6 +225,7 @@ RegisterCommand('oscomandos',function(src)
   out(src,'PERSONAJES: /personaje [alias|char:id]; ADMIN: /crearpersonaje, /seleccionarpersonaje, /vincularpersonaje. /setpj retirado.')
   out(src,'POSICION: /guardarpos, /ultimaubicacion; ADMIN: /setspawn <destinatario>, /tpusuario <id>.')
   out(src,'APARIENCIA: se guarda sola al cambiar; /guardarropa la guarda al momento.')
+  out(src,'MUNDO: /policianpc [on|off] y /npcs [on|off] (admin) activan o desactivan policia NPC y peatones/trafico.')
 end,false)
 
 RegisterCommand('setjob',function(src,args)
@@ -280,6 +281,52 @@ RegisterNetEvent('osdev:requestBusinessBlips',function()
   pushBlips(src)
 end)
 AddEventHandler('playerDropped',function() lastBlipRequest[source]=nil end)
+
+-- Ajustes del mundo persistentes (policia NPC, peatones y trafico), aplicados por cada cliente.
+local WORLD_DEFAULTS={npcPolice='NpcPoliceDefault',ambientNpcs='AmbientNpcsDefault'}
+local function worldSetting(key)
+  local value=state.settings and state.settings[key]
+  if value==nil then return OSDevtools.CoreConfig[WORLD_DEFAULTS[key]]~=false end
+  return value
+end
+local function npcPolice() return worldSetting('npcPolice') end
+local function pushWorld(target)
+  local settings={npcPolice=worldSetting('npcPolice'),ambientNpcs=worldSetting('ambientNpcs')}
+  if target then return TriggerClientEvent('osdev:worldSettings',target,settings) end
+  for _,id in ipairs(GetPlayers()) do TriggerClientEvent('osdev:worldSettings',tonumber(id),settings) end
+end
+local lastWorldRequest={}
+RegisterNetEvent('osdev:requestWorldSettings',function()
+  local src=source
+  if src<=0 or not ready then return end
+  local now=GetGameTimer()
+  if lastWorldRequest[src] and now>=lastWorldRequest[src] and now-lastWorldRequest[src]<5000 then return end
+  lastWorldRequest[src]=now
+  pushWorld(src)
+end)
+AddEventHandler('playerDropped',function() lastWorldRequest[source]=nil end)
+RegisterCommand('policianpc',function(src,args)
+  local mode=args[1] and args[1]:lower()
+  if not mode then return out(src,'Policia NPC: '..(npcPolice() and 'ACTIVADA (GTA normal)' or 'DESACTIVADA (sin estrellas ni persecuciones)')..'. Uso: /policianpc on|off') end
+  if not needAdmin(src,'osdev.admin') then return end
+  if mode~='on' and mode~='off' then return out(src,'Uso: /policianpc on|off') end
+  local enabled=mode=='on'
+  if action(src,'npc police '..mode,function(d) d.settings=d.settings or {};d.settings.npcPolice=enabled;return true end) then
+    pushWorld()
+    out(src,enabled and 'Policia NPC ACTIVADA: estrellas y persecuciones normales de GTA.' or 'Policia NPC DESACTIVADA: sin estrellas, persecuciones ni envios policiales.')
+  end
+end,false)
+RegisterCommand('npcs',function(src,args)
+  local mode=args[1] and args[1]:lower()
+  if not mode then return out(src,'Peatones y trafico: '..(worldSetting('ambientNpcs') and 'ACTIVADOS (GTA normal)' or 'DESACTIVADOS (ciudad vacia)')..'. Uso: /npcs on|off') end
+  if not needAdmin(src,'osdev.admin') then return end
+  if mode~='on' and mode~='off' then return out(src,'Uso: /npcs on|off') end
+  local enabled=mode=='on'
+  if action(src,'ambient npcs '..mode,function(d) d.settings=d.settings or {};d.settings.ambientNpcs=enabled;return true end) then
+    pushWorld()
+    out(src,enabled and 'Peatones y trafico ACTIVADOS: poblacion normal de GTA.' or 'Peatones y trafico DESACTIVADOS: no aparecen nuevos; los actuales desaparecen al alejarte.')
+  end
+end,false)
 
 -- /crearpropiedad <numero> <precio>: ID elegido por el administrador, sin nombre, tipo ni titular.
 RegisterCommand('crearpropiedad',function(src,args)
