@@ -10,7 +10,7 @@ server_scripts {
     'server/storage/codec.lua', 'server/storage/resource_files.lua', 'server/storage/json.lua',
     'server/state.lua', 'server/appearance_xml.lua', 'server/storage.lua', 'server/core.lua',
     'server/auth_identity.lua', 'server/authorization_hub.lua', 'server/auth_boot.lua',
-    'server/identity_commands.lua', 'server/vehicles.lua', 'server.lua'
+    'server/identity_commands.lua', 'server/admin_section.lua', 'server/vehicles.lua', 'server.lua'
 }
 client_scripts { 'client.lua', 'client/appearance.lua', 'client/spawn_controller.lua', 'client/spawn.lua', 'client/business.lua', 'client/world.lua', 'client/suggestions.lua' }
 

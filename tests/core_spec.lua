@@ -129,6 +129,18 @@ test('Active employment export reflects setjob/setduty for trusted readers only 
     c.origin='os_security';e=c.exports.GetActiveEmployment(1);assert(e.job=='gruppe6' and e.rank=='tecnico' and e.duty==true)
     c.origin='untrusted';assert(not c.exports.GetActiveEmployment(1))
 end)
+test('Admin panel section reads and changes characters through the core and rechecks permissions',function()
+    local c=fixture();local allowed=true
+    local section=OSDevtools.AdminSections.characters({core=c.core,can=function() return allowed end})
+    local function action(id) for _,a in ipairs(section.actions) do if a.id==id then return a end end end
+    assert(section.id=='personajes' and #section.actions==6)
+    local seen=action('ver').handler(1,{jugador=1});assert(seen.ok and seen.rows[1][2]=='oscar_vega')
+    local all=action('lista').handler(0,{});assert(all.ok and #all.rows>=1 and all.columns[1]=='Alias')
+    local created=action('crear').handler(1,{jugador=1,alias='panel_test'});assert(created.ok,created.message)
+    assert(c.snapshot().characters.panel_test)
+    allowed=false;local denied=action('crear').handler(1,{jugador=1,alias='otro_test'})
+    assert(not denied.ok and not c.snapshot().characters.otro_test)
+end)
 test('Corrupt legacy or snapshot files remain untouched and block all writes',function()
     local c=fixture({['data.json']='{corrupt'});local before=c.writes;c.command('setmoney',1,{'2','1'});assert(c.writes==before and c.files['data.json']=='{corrupt')
     c=fixture();local files=c.files;files['data/core.b.json']='{corrupt'

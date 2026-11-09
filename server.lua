@@ -584,6 +584,10 @@ OSDevtools.VehicleRuntime=vehicles
 local loaded,loadError=core.start()
 if not loaded then print('[os_devtools] Registro bloqueado: '..tostring(storageError or loadError)) end
 OSDevtools.bindCore({core=core,reply=out,list=list,guard=needAdmin})
+-- Panel y consola de os_admin (opcional).
+local adminOptions={core=core,can=function(src,permission) return ready and (src==0 or admin(src,permission)) end}
+OSDevtools.AdminSections.publish(adminOptions)
+AddEventHandler('os_admin:ready',function() OSDevtools.AdminSections.publish(adminOptions) end)
 if loaded then
   for _,id in ipairs(GetPlayers()) do local alias,err=core.ensure(tonumber(id));if not alias then out(tonumber(id),err) end end
   print('[os_devtools] 0.1.3 listo. Datos conservados; /setpj permanece retirado.')
