@@ -142,6 +142,21 @@ function OSDevtools.bindCore(options)
     exports('GetActiveEmployment',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.employment(player) end)
     exports('ResolveCharacter',function(value) if not reader() then return nil,'resource_not_authorized' end;return core.find(value) end)
     exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.3',provider='os_devtools'} end)
+    -- Ingreso de un recurso de trabajo autorizado (Payers) al personaje activo; queda en la auditoria.
+    exports('PayCharacter',function(player,amount,account,reason)
+        local caller=GetInvokingResource()
+        if not caller or not OSDevtools.CoreConfig.Payers[caller] then return false,'resource_not_authorized' end
+        local n=math.tointeger(tonumber(amount));account=account or 'bank'
+        if not n or n<=0 or n>OSDevtools.CoreConfig.MaxPayment or (account~='bank' and account~='cash') then return false,'invalid_amount' end
+        local alias,err=core.ensure(player);if not alias then return false,err end
+        local label=('pay %s %s %s %d %s'):format(caller,alias,account,n,tostring(reason or ''):gsub('[^%w_%-]',''):sub(1,40))
+        local ok,why=core.change(player,label,function(d)
+            local c=d.characters[alias];if not c then return false,'Personaje no encontrado.' end
+            if c[account]+n>2147483647 then return false,'Saldo fuera de rango.' end
+            c[account]=c[account]+n;return true
+        end)
+        return ok==true,ok and nil or why
+    end)
     exports('GetCharacterSpawn',function(player) if reader() then return core.spawnSelection(player) end end)
     -- Compatibilidad con el inventario pretest; el contrato nuevo es GetActiveCharacter.
     exports('GetCharacterId',function(player) if reader() then return core.ensure(player) end end)
