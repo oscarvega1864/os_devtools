@@ -3,6 +3,11 @@ OSDevtools = OSDevtools or {}
 OSDevtools.AuthorizationConfig = {
     TxResource = 'monitor', VerifiedTxVersion = '8.1.2', ProofSeconds = 900, MaxLeaseMinutes = 60,
     ManagerAce = 'oscar.auth.manage',
+    -- Admins de txAdmin: mientras txAdmin los reconozca como admin en el juego, entran en este grupo ACE
+    -- (el mismo que los admins de server.cfg: panel F10, comandos, vMenu...). nil lo desactiva.
+    -- Requiere en server.cfg: add_ace resource.os_devtools command.add_principal allow
+    --                         add_ace resource.os_devtools command.remove_principal allow
+    TxAdminGroup = 'group.admin',
     Permissions = {
         ['osdev.admin'] = {}, ['osdev.economy'] = { parent = 'osdev.admin' },
         ['osdev.jobs'] = { parent = 'osdev.admin' }, ['osdev.assets'] = { parent = 'osdev.admin' },

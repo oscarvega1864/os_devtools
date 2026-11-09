@@ -22,14 +22,36 @@ function OSDevtools.AuthDiagnosticAllowed(source)
     if lastDiagnostic[source] and now>=lastDiagnostic[source] and now-lastDiagnostic[source]<2000 then return false end
     lastDiagnostic[source]=now;return true
 end
-AddEventHandler('txAdmin:events:adminAuth',function(event) hub.txEvent(GetInvokingResource(),event) end)
+-- Admins de txAdmin -> grupo ACE de la sesion (player.<id>). Solo eventos del recurso de txAdmin.
+local txGranted={}
+local function txGroup(source,on)
+    local group=config.TxAdminGroup
+    if type(group)~='string' or not group:match('^group%.[%w_]+$') then return end
+    if on and not txGranted[source] then
+        txGranted[source]=true
+        ExecuteCommand(('add_principal player.%d %s'):format(source,group))
+        print(('[OSCAR AUTH] action=txadmin_group_added source=%d group=%s'):format(source,group))
+    elseif not on and txGranted[source] then
+        txGranted[source]=nil
+        ExecuteCommand(('remove_principal player.%d %s'):format(source,group))
+        print(('[OSCAR AUTH] action=txadmin_group_removed source=%d group=%s'):format(source,group))
+    end
+end
+local function txGroupsClear() for source in pairs(txGranted) do txGroup(source,false) end end
+AddEventHandler('txAdmin:events:adminAuth',function(event)
+    local origin=GetInvokingResource()
+    hub.txEvent(origin,event)
+    if origin~=config.TxResource or type(event)~='table' or type(event.isAdmin)~='boolean' or math.type(event.netid)~='integer' then return end
+    if event.netid==-1 then if not event.isAdmin then txGroupsClear() end return end
+    if event.netid>0 and GetPlayerName(event.netid) then txGroup(event.netid,event.isAdmin) end
+end)
 AddEventHandler('txAdmin:events:adminsUpdated',function() hub.updated(GetInvokingResource()) end)
 AddEventHandler('playerDropped',function()
-    local player=tonumber(source);hub.drop(player);lastDenial[player],lastDiagnostic[player]=nil,nil
+    local player=tonumber(source);hub.drop(player);txGroup(player,false);lastDenial[player],lastDiagnostic[player]=nil,nil
 end)
 AddEventHandler('onResourceStop',function(resource)
     hub.resourceStopped(resource)
-    if resource==GetCurrentResourceName() then hub.reset('broker_stopped') end
+    if resource==GetCurrentResourceName() then hub.reset('broker_stopped');txGroupsClear() end
 end)
 AddEventHandler('onResourceStart',function(resource)
     if resource==config.TxResource then hub.reset('monitor_started') end

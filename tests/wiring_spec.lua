@@ -33,6 +33,7 @@ local function fixture(files,behavior)
         return c.aceInteger and (result and 1 or 0) or result
     end
     GetPlayerPed=function(source) return c.players[source] and source+100 or 0 end
+    c.executed={};ExecuteCommand=function(command) c.executed[#c.executed+1]=command end
     -- Mundo simulado de vehiculos de servidor (handles >1000, sin choque con peds 101+).
     c.world=c.world or {};c.nextEntity=c.nextEntity or 1000;c.onesync=c.onesync or 'on'
     GetConvar=function(name,default) if name=='onesync' then return c.onesync end;return default end
@@ -152,6 +153,16 @@ test('Client events cannot fake local txAdmin authentication or choose another i
     c.event('txAdmin:events:adminAuth','untrusted',{netid=2,isAdmin=true,permissions={'all_permissions'}})
     c.command('osautorizar',0,{'2','devtools_admin','10','CONFIRMAR'});assert(not OSDevtools.AuthHub.can(2,'osdev.admin'))
     local before=c.writes;source=2;c.net['osdev:vehicleAppearance']('OS000001',0,111);c.net['osdev:vehicleModelTypes']('forged',{sultan='automobile'});assert(c.writes==before)
+end)
+test('txAdmin admins join group.admin for their session only while txAdmin recognizes them',function()
+    local c=fixture()
+    c.event('txAdmin:events:adminAuth','untrusted',{netid=2,isAdmin=true});assert(#c.executed==0)
+    c.auth(2);assert(c.executed[1]=='add_principal player.2 group.admin' and #c.executed==1)
+    c.auth(2);assert(#c.executed==1) -- sin duplicar
+    c.event('txAdmin:events:adminAuth','monitor',{netid=2,isAdmin=false});assert(c.executed[2]=='remove_principal player.2 group.admin')
+    c.auth(2);c.event('txAdmin:events:adminAuth','monitor',{netid=-1,isAdmin=false});assert(c.executed[4]=='remove_principal player.2 group.admin')
+    c.auth(2);source=2;for _,fn in ipairs(c.events.playerDropped) do fn() end;assert(c.executed[6]=='remove_principal player.2 group.admin')
+    c.event('txAdmin:events:adminAuth','monitor',{netid=9,isAdmin=true});assert(#c.executed==6) -- jugador inexistente
 end)
 test('Only approved resource consumers can query their own verified scopes',function()
     local c=fixture();c.auth(2);c.command('osautorizar',0,{'2','security_admin','10','CONFIRMAR'})
