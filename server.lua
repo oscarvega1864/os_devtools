@@ -629,6 +629,14 @@ exports('GetBalance',function(alias,account)
   if not ready or not c or (account~='cash' and account~='bank') then return nil end
   return c[account]
 end)
+-- Lista de propiedades o negocios (copias), p. ej. para que os_security cierre sus puertas con llave.
+exports('ListAssets',function(category)
+  if not ready or not ({businesses=true,properties=true})[category] then return nil end
+  local result={}
+  for _,asset in pairs(state[category] or {}) do result[#result+1]=clone(asset) end
+  table.sort(result,function(a,b) return a.id<b.id end)
+  return result
+end)
 exports('GetAsset',function(category,id)
   if not ready or not ({vehicles=true,businesses=true,properties=true})[category] then return nil end
   local d=state[category]
