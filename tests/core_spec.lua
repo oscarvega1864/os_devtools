@@ -141,6 +141,24 @@ test('Admin panel section reads and changes characters through the core and rech
     allowed=false;local denied=action('crear').handler(1,{jugador=1,alias='otro_test'})
     assert(not denied.ok and not c.snapshot().characters.otro_test)
 end)
+test('Economy and asset panel actions run the existing commands and return their replies instead of sending them',function()
+    local c=fixture();local options=OSDevtools.AdminRuntime
+    local function section(build) local list={};for _,a in ipairs(build(options).actions) do list[a.id]=a end;return list end
+    local economy,assets=section(OSDevtools.AdminSections.economy),section(OSDevtools.AdminSections.assets)
+    local before=c.snapshot().characters.oscar_vega.cash;local sent=#c.messages
+    local given=economy.dar.handler(1,{destino='oscar_vega',cantidad=500,cuenta='cash'})
+    assert(given.ok and given.message:find('500',1,true) and c.snapshot().characters.oscar_vega.cash==before+500)
+    for index=sent+1,#c.messages do assert(c.messages[index].name~='osdev:msg') end -- respuesta recogida, no enviada
+    local refused=economy.quitar.handler(1,{destino='oscar_vega',cantidad=2147483647,cuenta='bank'})
+    assert(not refused.ok and refused.message:find('insuficientes'))
+    assert(economy.empleo.handler(1,{destino='oscar_vega',empleo='gruppe6',rango='tecnico'}).ok)
+    assert(economy.servicio.handler(1,{destino='oscar_vega',estado=true}).ok and c.snapshot().characters.oscar_vega.duty==true)
+    local listed=assets.lista.handler(1,{categoria='businesses'});assert(listed.ok and (listed.rows or listed.message))
+    assert(assets.negocio.handler(1,{tipo='bar',nombre='Bar del Panel',precio=1000}).ok and c.snapshot().businesses['2'].name=='Bar del Panel')
+    assert(assets.asignar.handler(1,{categoria='businesses',id=2,destino='oscar_vega'}).ok and c.snapshot().businesses['2'].owner=='oscar_vega')
+    local nobody=assets.asignar.handler(1,{categoria='businesses',id=99,destino='oscar_vega'});assert(not nobody.ok)
+    c.aces[2]={};local denied=economy.dar.handler(2,{destino='oscar_vega',cantidad=1,cuenta='cash'});assert(not denied.ok)
+end)
 test('Corrupt legacy or snapshot files remain untouched and block all writes',function()
     local c=fixture({['data.json']='{corrupt'});local before=c.writes;c.command('setmoney',1,{'2','1'});assert(c.writes==before and c.files['data.json']=='{corrupt')
     c=fixture();local files=c.files;files['data/core.b.json']='{corrupt'

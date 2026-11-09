@@ -1,4 +1,13 @@
 local RESOURCE = GetCurrentResourceName()
+-- Los comandos de este archivo se guardan tambien por nombre para que el panel de os_admin los
+-- ejecute con la misma validacion y recoja sus respuestas (ver runCommand).
+local nativeRegisterCommand=RegisterCommand
+local commandHandlers={}
+local function RegisterCommand(name,handler,restricted)
+  commandHandlers[name]=handler
+  return nativeRegisterCommand(name,handler,restricted)
+end
+local capture=nil -- {src, lines}: respuestas recogidas para el panel en vez de enviarlas
 local core
 local state={characters={},bindings={},vehicles={},businesses={},properties={},audit={}}
 local ready=false
@@ -32,11 +41,13 @@ AddEventHandler('playerDropped',function() lastHudRequest[source]=nil end)
 -- Mensaje corto: notificacion (os_notify) o chat. Tipo: info | success | warning | error;
 -- sin tipo, una linea de uso se marca como aviso.
 local function out(src, msg, kind)
+  if capture and capture.src==src then capture.lines[#capture.lines+1]={msg,kind or (msg:find('^Uso') and 'warning') or 'info'};return end
   if src == 0 then return print('[os_devtools] '..msg) end
   TriggerClientEvent('osdev:msg',src,msg,kind or (msg:find('^Uso') and 'warning') or 'info')
 end
 -- Listados y consultas largas: siempre al chat, donde se pueden leer y desplazar.
 local function list(src, msg)
+  if capture and capture.src==src then capture.lines[#capture.lines+1]={msg,'list'};return end
   if src == 0 then return print('[os_devtools] '..msg) end
   TriggerClientEvent('osdev:list',src,msg)
 end
@@ -584,8 +595,24 @@ OSDevtools.VehicleRuntime=vehicles
 local loaded,loadError=core.start()
 if not loaded then print('[os_devtools] Registro bloqueado: '..tostring(storageError or loadError)) end
 OSDevtools.bindCore({core=core,reply=out,list=list,guard=needAdmin})
--- Panel y consola de os_admin (opcional).
-local adminOptions={core=core,can=function(src,permission) return ready and (src==0 or admin(src,permission)) end}
+-- Panel y consola de os_admin (opcional). runCommand ejecuta un comando existente de este recurso
+-- y devuelve sus respuestas; las asincronas (p. ej. crear vehiculo) llegan despues como aviso normal.
+local function runCommand(src,name,args)
+  local handler=commandHandlers[name]
+  if not handler then return {ok=false,message='Comando no disponible: '..name} end
+  local previous=capture;capture={src=src,lines={}}
+  local ok,err=pcall(handler,src,args)
+  local lines=capture.lines;capture=previous
+  if not ok then print('[os_devtools] Fallo en '..name..' desde el panel: '..tostring(err));return {ok=false,message='El comando fallo; revisar la consola.'} end
+  local failed,texts=false,{}
+  for _,line in ipairs(lines) do texts[#texts+1]=line[1];if line[2]=='error' or line[2]=='warning' then failed=true end end
+  if #texts==0 then return {ok=true,message='Solicitud enviada; el resultado llegara como aviso.'} end
+  if #texts==1 then return {ok=not failed,message=texts[1]} end
+  local rows={};for index=2,#texts do rows[#rows+1]={texts[index]} end
+  return {ok=not failed,message=texts[1],columns={'Detalle'},rows=rows}
+end
+local adminOptions={core=core,run=runCommand,can=function(src,permission) return ready and (src==0 or admin(src,permission)) end}
+OSDevtools.AdminRuntime=adminOptions
 OSDevtools.AdminSections.publish(adminOptions)
 AddEventHandler('os_admin:ready',function() OSDevtools.AdminSections.publish(adminOptions) end)
 if loaded then

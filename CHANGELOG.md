@@ -9,6 +9,7 @@
 - `/npcs on|off`: ajuste persistente que quita peatones, tráfico y coches aparcados de GTA para todos los jugadores, sin borrar entidades existentes.
 - Mensajes: confirmaciones y errores como notificaciones de `os_notify` (opcional, con vuelta al chat); listados siempre al chat. Sugerencias con ayuda y parámetros para todos los comandos.
 - `importarropa`: importación auditada de XML de Menyoo (OutfitPedData) desde `data/`, con aplicación inmediata al jugador conectado.
+- Panel y consola de `os_admin` (opcional): secciones Personajes (ver, listar, cambiar, crear, guardar posición, spawn), Economía y empleos (dar/quitar/fijar dinero, empleo, servicio, bienes) y Bienes y mundo (listar, detalle, asignar, crear propiedad/negocio/vehículo, recuperar vehículo, policía NPC, peatones y tráfico). Las acciones reutilizan los comandos existentes, con su validación y permisos, y devuelven sus respuestas al panel.
 - Devtools es el único dueño del autospawn de spawnmanager: un gametype que fuerce respawn ya no mueve al personaje ni cambia su modelo.
 
 ## 0.1.3 — Identidad persistente y posiciones

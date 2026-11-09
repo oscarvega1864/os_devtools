@@ -78,9 +78,93 @@ function OSDevtools.AdminSections.characters(options)
     }
 end
 
+-- Economia y empleos: reutilizan los comandos existentes (misma validacion, permisos y auditoria).
+local DESTINO = { id = 'destino', label = 'Jugador o personaje (ID o alias)', type = 'text', max = 64 }
+local CUENTA = { id = 'cuenta', label = 'Cuenta', type = 'select', options = { { value = 'cash', label = 'Efectivo' }, { value = 'bank', label = 'Banco' } } }
+
+function OSDevtools.AdminSections.economy(options)
+    local run = options.run
+    local function money(command)
+        return function(source, values) return run(source, command, { values.destino, tostring(values.cantidad), values.cuenta }) end
+    end
+    return {
+        id = 'economia', label = 'Economia y empleos', order = 30,
+        actions = {
+            { id = 'dar', label = 'Dar dinero', ace = 'osdev.admin', fields = { DESTINO, { id = 'cantidad', label = 'Cantidad', type = 'number', integer = true, min = 1, max = 2147483647 }, CUENTA }, handler = money('givemoney') },
+            { id = 'quitar', label = 'Quitar dinero', ace = 'osdev.admin', fields = { DESTINO, { id = 'cantidad', label = 'Cantidad', type = 'number', integer = true, min = 1, max = 2147483647 }, CUENTA }, handler = money('removemoney') },
+            { id = 'fijar', label = 'Fijar saldo', ace = 'osdev.admin', confirm = true, fields = { DESTINO, { id = 'cantidad', label = 'Saldo', type = 'number', integer = true, min = 0, max = 2147483647 }, CUENTA }, handler = money('setmoney') },
+            { id = 'empleo', label = 'Asignar empleo', ace = 'osdev.admin', description = 'Deja al personaje fuera de servicio.',
+              fields = { DESTINO, { id = 'empleo', label = 'Empleo (p. ej. gruppe6)', type = 'text', max = 40 }, { id = 'rango', label = 'Rango (p. ej. tecnico)', type = 'text', max = 40 } },
+              handler = function(source, values) return run(source, 'setjob', { values.destino, values.empleo, values.rango }) end },
+            { id = 'servicio', label = 'Entrar o salir de servicio', ace = 'osdev.admin',
+              fields = { DESTINO, { id = 'estado', label = 'De servicio', type = 'boolean', default = true } },
+              handler = function(source, values) return run(source, 'setduty', { values.destino, values.estado and 'on' or 'off' }) end },
+            { id = 'bienes', label = 'Ver dinero y bienes', ace = 'osdev.admin', fields = { DESTINO },
+              handler = function(source, values) return run(source, 'verpropiedades', { values.destino }) end }
+        }
+    }
+end
+
+-- Propiedades, negocios, vehiculos y mundo.
+function OSDevtools.AdminSections.assets(options)
+    local run = options.run
+    local kinds = {}
+    for key, kind in pairs(OSDevtools.BusinessTypes) do kinds[#kinds + 1] = { value = key, label = kind.label } end
+    table.sort(kinds, function(a, b) return a.label < b.label end)
+    local category = { id = 'categoria', label = 'Categoria', type = 'select', options = {
+        { value = 'properties', label = 'Propiedades' }, { value = 'businesses', label = 'Negocios' }, { value = 'vehicles', label = 'Vehiculos' } } }
+    local commandFor = {
+        list = { properties = 'listpropiedades', businesses = 'listnegocios', vehicles = 'listvehiculos' },
+        info = { properties = 'infopropiedad', businesses = 'infonegocio', vehicles = 'infovehiculo' },
+        assign = { properties = 'setpropiedad', businesses = 'setnegocio', vehicles = 'setvehiculo' }
+    }
+    local id = { id = 'id', label = 'ID', type = 'number', integer = true, min = 1, max = 2147483646 }
+    local color = function(field, label, required) return { id = field, label = label, type = 'number', integer = true, min = 0, max = 159, required = required } end
+    return {
+        id = 'bienes', label = 'Bienes y mundo', order = 40,
+        actions = {
+            { id = 'lista', label = 'Listar bienes', ace = 'osdev.admin', fields = { category },
+              handler = function(source, values) return run(source, commandFor.list[values.categoria], {}) end },
+            { id = 'info', label = 'Detalle de un bien', ace = 'osdev.admin', fields = { category, id },
+              handler = function(source, values) return run(source, commandFor.info[values.categoria], { tostring(values.id) }) end },
+            { id = 'asignar', label = 'Asignar propietario', ace = 'osdev.admin', fields = { category, id, DESTINO },
+              handler = function(source, values) return run(source, commandFor.assign[values.categoria], { tostring(values.id), values.destino }) end },
+            { id = 'propiedad', label = 'Crear propiedad aqui', ace = 'osdev.admin', self = true, description = 'En tu posicion, sin propietario; aparece su blip.',
+              fields = { { id = 'numero', label = 'Numero', type = 'number', integer = true, min = 1, max = 2147483646 }, { id = 'precio', label = 'Precio', type = 'number', integer = true, min = 0, max = 2147483647 } },
+              handler = function(source, values) return run(source, 'crearpropiedad', { tostring(values.numero), tostring(values.precio) }) end },
+            { id = 'negocio', label = 'Crear negocio aqui', ace = 'osdev.admin', self = true, description = 'En tu posicion, sin propietario; blip segun el tipo.',
+              fields = { { id = 'tipo', label = 'Tipo', type = 'select', options = kinds }, { id = 'nombre', label = 'Nombre', type = 'text', min = 3, max = 40 },
+                  { id = 'precio', label = 'Precio', type = 'number', integer = true, min = 0, max = 2147483647 } },
+              handler = function(source, values) return run(source, 'crearnegocio', { values.tipo, values.nombre, tostring(values.precio) }) end },
+            { id = 'vehiculo', label = 'Crear vehiculo delante', ace = 'osdev.admin', self = true,
+              fields = { { id = 'modelo', label = 'Modelo (p. ej. sultan)', type = 'text', max = 50 }, color('primario', 'Color primario 0-159'),
+                  color('secundario', 'Color secundario', false),
+                  { id = 'modo', label = 'Modo', type = 'select', options = { { value = 'temporal', label = 'Temporal' }, { value = 'fijo', label = 'Fijo (persistente)' } } },
+                  { id = 'propietario', label = 'Propietario (ID o alias)', type = 'text', max = 64, required = false } },
+              handler = function(source, values)
+                  local args = { values.modelo, tostring(values.primario) }
+                  if values.secundario then args[#args + 1] = tostring(values.secundario) end
+                  args[#args + 1] = values.modo
+                  if values.propietario then args[#args + 1] = values.propietario end
+                  return run(source, 'crearvehiculo', args)
+              end },
+            { id = 'recuperar', label = 'Recuperar vehiculo delante', ace = 'osdev.admin', self = true, fields = { id },
+              handler = function(source, values) return run(source, 'recuperarvehiculo', { tostring(values.id) }) end },
+            { id = 'policia', label = 'Policia NPC', ace = 'osdev.admin', fields = { { id = 'estado', label = 'Activada', type = 'boolean', default = false } },
+              handler = function(source, values) return run(source, 'policianpc', { values.estado and 'on' or 'off' }) end },
+            { id = 'trafico', label = 'Peatones y trafico', ace = 'osdev.admin', fields = { { id = 'estado', label = 'Activados', type = 'boolean', default = true } },
+              handler = function(source, values) return run(source, 'npcs', { values.estado and 'on' or 'off' }) end }
+        }
+    }
+end
+
 -- Registra (o vuelve a registrar) las secciones si os_admin esta iniciado.
 function OSDevtools.AdminSections.publish(options)
-    if GetResourceState('os_admin') ~= 'started' then return end
-    local ok, err = pcall(function() return exports.os_admin:RegisterSection(OSDevtools.AdminSections.characters(options)) end)
-    if not ok then print('[os_devtools] No se pudo registrar la seccion de administracion: ' .. tostring(err)) end
+    -- 'starting': os_admin avisa con os_admin:ready mientras termina de arrancar.
+    local state = GetResourceState('os_admin')
+    if state ~= 'started' and state ~= 'starting' then return end
+    for _, build in ipairs({ OSDevtools.AdminSections.characters, OSDevtools.AdminSections.economy, OSDevtools.AdminSections.assets }) do
+        local ok, err = pcall(function() return exports.os_admin:RegisterSection(build(options)) end)
+        if not ok then print('[os_devtools] No se pudo registrar una seccion de administracion: ' .. tostring(err)) end
+    end
 end
