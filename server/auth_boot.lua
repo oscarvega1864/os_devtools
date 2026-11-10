@@ -1,12 +1,13 @@
 -- Composicion del servicio comun. Eventos locales: nunca RegisterNetEvent.
 local config=OSDevtools.AuthorizationConfig
 local lastDenial,lastDiagnostic={},{}
+local function txReady()
+    return GetResourceState(config.TxResource)=='started'
+        and GetResourceMetadata(config.TxResource,'version',0)==config.VerifiedTxVersion
+end
 OSDevtools.AuthHub=OSDevtools.AuthorizationHub.new({
     now=GetGameTimer,identity=OSDevtools.AuthIdentity.resolve,ace=IsPlayerAceAllowed,
-    txReady=function()
-        return GetResourceState(config.TxResource)=='started'
-            and GetResourceMetadata(config.TxResource,'version',0)==config.VerifiedTxVersion
-    end,
+    txReady=txReady,
     resourceState=GetResourceState,log=function(message) print(message) end
 })
 local hub=OSDevtools.AuthHub
@@ -30,7 +31,14 @@ local function txGroup(source,on)
     if on and not txGranted[source] then
         txGranted[source]=true
         ExecuteCommand(('add_principal player.%d %s'):format(source,group))
-        print(('[OSCAR AUTH] action=txadmin_group_added source=%d group=%s'):format(source,group))
+        -- Sin el ACE del recurso para add_principal, FiveM ignora el comando: se avisa con la linea que falta.
+        local check=IsPlayerAceAllowed(source,'osdev.admin')
+        if check==true or check==1 then
+            print(('[OSCAR AUTH] action=txadmin_group_added source=%d group=%s'):format(source,group))
+        else
+            print(('[OSCAR AUTH] ERROR: no se pudo dar %s a %d. Falta en server.cfg: add_ace resource.%s command.add_principal allow (y command.remove_principal).'):format(
+                group,source,GetCurrentResourceName()))
+        end
     elseif not on and txGranted[source] then
         txGranted[source]=nil
         ExecuteCommand(('remove_principal player.%d %s'):format(source,group))
@@ -41,11 +49,16 @@ local function txGroupsClear() for source in pairs(txGranted) do txGroup(source,
 AddEventHandler('txAdmin:events:adminAuth',function(event)
     local origin=GetInvokingResource()
     hub.txEvent(origin,event)
-    if origin~=config.TxResource or type(event)~='table' or type(event.isAdmin)~='boolean' or math.type(event.netid)~='integer' then return end
+    if origin~=config.TxResource or not txReady() or type(event)~='table' or type(event.isAdmin)~='boolean' or math.type(event.netid)~='integer' then return end
     if event.netid==-1 then if not event.isAdmin then txGroupsClear() end return end
     if event.netid>0 and GetPlayerName(event.netid) then txGroup(event.netid,event.isAdmin) end
 end)
-AddEventHandler('txAdmin:events:adminsUpdated',function() hub.updated(GetInvokingResource()) end)
+-- Cambio en la lista de admins de txAdmin: se retiran los grupos dados; txAdmin vuelve a autenticar a los que sigan.
+AddEventHandler('txAdmin:events:adminsUpdated',function()
+    local origin=GetInvokingResource()
+    hub.updated(origin)
+    if origin==config.TxResource then txGroupsClear() end
+end)
 AddEventHandler('playerDropped',function()
     local player=tonumber(source);hub.drop(player);txGroup(player,false);lastDenial[player],lastDiagnostic[player]=nil,nil
 end)

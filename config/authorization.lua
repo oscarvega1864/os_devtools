@@ -7,6 +7,8 @@ OSDevtools.AuthorizationConfig = {
     -- (el mismo que los admins de server.cfg: panel F10, comandos, vMenu...). nil lo desactiva.
     -- Requiere en server.cfg: add_ace resource.os_devtools command.add_principal allow
     --                         add_ace resource.os_devtools command.remove_principal allow
+    -- Al reiniciar os_devtools se retiran (un ID de jugador se reutiliza); el admin debe reconectar o volver a
+    -- autenticarse en txAdmin para recuperarlo.
     TxAdminGroup = 'group.admin',
     Permissions = {
         ['osdev.admin'] = {}, ['osdev.economy'] = { parent = 'osdev.admin' },

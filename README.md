@@ -13,6 +13,7 @@ La identidad inicial es automática. **`/setpj` permanece retirado por la instru
 | `/personaje` | Personal: lista personajes propios y sus IDs. |
 | `/personaje <alias\|char:ID>` | Selecciona un personaje de la misma cuenta; guarda primero la posición anterior. |
 | `/personajes` | Personal: abre el selector (NUI) para cambiar de personaje o crear uno propio. |
+| `/disenarpj` | Personal: abre el diseñador de aspecto (herencia, rasgos, pelo, ropa) del personaje activo. |
 | `/crearpersonaje <idJugador> <alias>` | `osdev.identity`: crea un personaje para esa cuenta; no sustituye al activo si ya existe. |
 | `/seleccionarpersonaje <idJugador> <alias\|char:ID>` | `osdev.identity`: selecciona un personaje ya perteneciente a la cuenta. |
 | `/vincularpersonaje <idJugador> <alias\|char:ID> CONFIRMAR` | `osdev.identity`: vincula un personaje heredado sin propietario; registra la intervención. No reasigna personajes de otra cuenta. |
@@ -160,3 +161,5 @@ No se ha realizado una ejecución controlada de estos casos en FiveM en esta ent
 ## Selector de personaje al entrar
 
 Al conectar, el cliente pide `osdev:requestCharacterSelect`. Si el jugador aún no ha aparecido en esta sesión (marca `osdevSpawned` en su state bag, que sobrevive a reinicios de os_devtools), el servidor lo pone en modo selección y envía solo los personajes de su cuenta (license); el ped espera congelado e invisible con una cámara fija (`OSDevtools.SelectScene` en `config/spawn.lua`) y se cierra la pantalla de carga. Mientras elige no se guardan posiciones ni se registran muertes. La elección (`osdev:chooseCharacter`) se valida en servidor: el personaje debe ser de esa cuenta; luego aparece con el flujo normal. Crear personaje propio (`osdev:createOwnCharacter`) usa nombre y apellido (letras A-Z, 2-16) para formar el alias `nombre_apellido`, con límite y espera configurables en `CharacterSelect` de `config/core.lua`. Con `Enabled=false` se vuelve a la aparición directa. La pantalla de carga vive en el recurso aparte `os_loadscreen`.
+
+Al crear un personaje se entra directamente con él (en juego, guardando antes la posición del actual). Si el personaje no tiene apariencia guardada, el contexto de aparición lleva `design=true` y el cliente abre el diseñador (`client/character_creator.lua`, `html/creator.*`): sexo freemode, padres y mezcla, 20 rasgos faciales, pelo, cejas, barba, ojos, ropa y accesorios, con cámara de cara o cuerpo. El cliente acota cada valor a lo que existe en el ped; al terminar guarda por `osdev:saveAppearance`, que el servidor valida como cualquier apariencia. `DesignWithoutAppearance=false` lo desactiva.

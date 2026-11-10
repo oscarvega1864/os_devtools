@@ -101,7 +101,7 @@ end
 test('All Lua syntax and actual manifest paths load while preserving pretest position commands',function()
     for _,file in ipairs(__files) do assert(loadfile('/repo/'..file),file) end
     local environment={fx_version=function(v) assert(v=='cerulean') end,game=function(v) assert(v=='gta5') end,lua54=function() end,author=function() end,description=function() end,
-        version=function(v) assert(v=='0.1.3') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
+        version=function(v) assert(v=='0.1.4') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
         shared_script=function(file) assert(loadfile('/repo/'..file)) end,shared_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
         client_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,ui_page=function() end,files=function() end}
     assert(loadfile('/repo/fxmanifest.lua','t',environment))()
@@ -163,6 +163,9 @@ test('txAdmin admins join group.admin for their session only while txAdmin recog
     c.auth(2);c.event('txAdmin:events:adminAuth','monitor',{netid=-1,isAdmin=false});assert(c.executed[4]=='remove_principal player.2 group.admin')
     c.auth(2);source=2;for _,fn in ipairs(c.events.playerDropped) do fn() end;assert(c.executed[6]=='remove_principal player.2 group.admin')
     c.event('txAdmin:events:adminAuth','monitor',{netid=9,isAdmin=true});assert(#c.executed==6) -- jugador inexistente
+    c.players[2].disconnected=nil;c.auth(2);assert(c.executed[7]=='add_principal player.2 group.admin')
+    c.event('txAdmin:events:adminsUpdated','monitor');assert(c.executed[8]=='remove_principal player.2 group.admin') -- cambio de admins
+    c.version='9.0.0';c.auth(2);assert(#c.executed==8) -- txAdmin no verificado: no se concede
 end)
 test('Only approved resource consumers can query their own verified scopes',function()
     local c=fixture();c.auth(2);c.command('osautorizar',0,{'2','security_admin','10','CONFIRMAR'})

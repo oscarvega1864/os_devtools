@@ -53,22 +53,44 @@ test('Choosing the bound character keeps its last valid position and a second re
     net(c,'osdev:chooseCharacter',1,'oscar_vega');assert(last(c,'osdev:characterSelectResult',1).ok)
 end)
 
-test('Self-service creation validates names, duplicates, the per-account limit and cooldown',function()
+test('Self-service creation validates names and duplicates, then enters with the new character and asks for its design',function()
     local c=fixture();net(c,'osdev:requestCharacterSelect',1)
     for _,args in ipairs({{'A','Lopez'},{'Ana','L'},{'An4','Lopez'},{'Ana_x','Lopez'},{'Oscar','Vega'},{string.rep('a',17),'Lopez'}}) do
         local writes=c.writes;net(c,'osdev:createOwnCharacter',1,args[1],args[2])
         assert(last(c,'osdev:characterSelectResult',1).ok==false and c.writes==writes,args[1])
     end
     net(c,'osdev:createOwnCharacter',1,'Ana','Lopez')
-    local d=c.snapshot();assert(d.characters.ana_lopez and d.characters.ana_lopez.account==A and d.bindings[A]=='oscar_vega')
-    local payload=last(c,'osdev:characterSelect',1);assert(#payload.characters==2 and payload.message:find('ana_lopez',1,true))
-    source=1;c.clock=c.clock+1500;c.net['osdev:createOwnCharacter']('Eva','Diaz')
-    assert(not c.snapshot().characters.eva_diaz and last(c,'osdev:characterSelectResult',1).ok==false)
+    local d=c.snapshot();assert(d.characters.ana_lopez and d.characters.ana_lopez.account==A and d.bindings[A]=='ana_lopez')
+    assert(last(c,'osdev:characterSelectResult',1).ok and not c.core.isSelecting(1))
+    local context=ack(c,1);assert(context.design==true and context.appearance==nil and context.reason=='character_select')
+    -- El personaje anterior conserva su posicion: en la entrada no habia ped real.
+    assert(c.snapshot().characters.oscar_vega.lastPosition.x==10)
+end)
+
+test('Creation respects cooldown and the per-account limit; in game it switches with the live position saved',function()
+    local c=fixture();net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:chooseCharacter',1,'oscar_vega');ack(c,1)
+    c.players[1].point={x=55,y=66,z=30}
+    net(c,'osdev:createOwnCharacter',1,'Eva','Diaz')
+    local d=c.snapshot();assert(d.bindings[A]=='eva_diaz' and d.characters.oscar_vega.lastPosition.x==55)
+    assert(last(c,'osdev:spawnCharacter',1).design==true);ack(c,1)
+    source=1;c.clock=c.clock+1500;c.net['osdev:createOwnCharacter']('Luis','Gil')
+    assert(not c.snapshot().characters.luis_gil and last(c,'osdev:characterSelectResult',1).ok==false)
     local max=OSDevtools.CoreConfig.CharacterSelect.MaxCharacters
-    for i=3,max do c.clock=c.clock+10000;source=1;c.net['osdev:createOwnCharacter']('Extra','P'..string.rep('x',i)) end
+    for i=3,max do c.clock=c.clock+10000;source=1;c.net['osdev:createOwnCharacter']('Extra','P'..string.rep('x',i));ack(c,1) end
     local owned=0;for _,ch in pairs(c.snapshot().characters) do if ch.account==A then owned=owned+1 end end;assert(owned==max)
     c.clock=c.clock+10000;source=1;c.net['osdev:createOwnCharacter']('Over','Limit')
     assert(not c.snapshot().characters.over_limit and last(c,'osdev:characterSelectResult',1).ok==false)
+end)
+
+test('A character with saved appearance never asks for the designer, and the designer saves through the validated path',function()
+    local c=fixture();net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:createOwnCharacter',1,'Ana','Lopez');ack(c,1)
+    local components={};for i=1,12 do components[i]={d=0,t=0,p=0} end
+    source=1;c.clock=c.clock+10000;c.net['osdev:saveAppearance']({model=1885233650,components=components,props={}},true)
+    assert(c.snapshot().characters.ana_lopez.appearance.model==1885233650)
+    source=1;c.clock=c.clock+10000;c.net['osdev:saveAppearance']({model=0,components=components,props={}},true) -- invalido: rechazado
+    assert(c.snapshot().characters.ana_lopez.appearance.model==1885233650)
+    c.command('personaje',1,{'oscar_vega'});ack(c,1);c.command('personaje',1,{'ana_lopez'})
+    assert(last(c,'osdev:spawnCharacter',1).design==nil)
 end)
 
 test('In game, /personajes opens the switch list and choosing saves the live position before switching',function()
@@ -87,4 +109,13 @@ test('Disabled selector keeps the direct connect spawn',function()
         assert(not last(c,'osdev:characterSelect',1) and last(c,'osdev:spawnCharacter',1).reason=='connect')
     end)
     OSDevtools.CoreConfig.CharacterSelect.Enabled=true;assert(ok,err)
+end)
+
+test('Loading preview shows only the connecting account own bound character and is restricted to authorized readers',function()
+    local c=fixture();withSecond(c)
+    c.origin='os_loadscreen';local preview=c.exports.GetLoadingPreview(1)
+    assert(preview.alias=='oscar_vega' and preview.characters==2 and preview.job=='gruppe6' and not json.encode(preview):find('license',1,true))
+    c.players[9]={identifiers={'license:'..string.rep('c',40)},point={x=1,y=2,z=3},h=0,bucket=0}
+    local fresh=c.exports.GetLoadingPreview(9);assert(fresh.characters==0 and fresh.alias==nil and not c.snapshot().bindings['license:'..string.rep('c',40)])
+    c.origin='untrusted';assert(c.exports.GetLoadingPreview(1)==nil);c.origin=nil
 end)

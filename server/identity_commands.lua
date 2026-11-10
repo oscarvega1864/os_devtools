@@ -144,10 +144,14 @@ function OSDevtools.bindCore(options)
         if not OSDevtools.Util.integer(player,1,2147483647) then return end
         if not core.isSelecting(player) and not core.hasSpawned(player) then return end
         if throttled(player) then return selectResult(player,false,'Demasiado rapido; vuelve a intentarlo.') end
-        local ok,result=core.createOwn(player,first,last)
+        local ok,result,switchError=core.createOwn(player,first,last)
         if not ok then return selectResult(player,false,result) end
-        if not core.isSelecting(player) and not core.hasSpawned(player) then requested[player]=true;return selectResult(player,true) end -- ya aparece con el nuevo
-        sendRoster(player,core.isSelecting(player) and 'connect' or 'switch','Personaje '..result..' creado.')
+        if switchError then -- creado, pero no se pudo entrar con el: se muestra en la lista
+            return sendRoster(player,core.isSelecting(player) and 'connect' or 'switch','Personaje '..result..' creado; no se pudo entrar con el: '..switchError)
+        end
+        if not core.hasSpawned(player) then requested[player]=true end -- la aparicion de entrada ya esta en marcha
+        selectResult(player,true)
+        reply(player,'Personaje '..label('alias:'..result)..' creado.'..(selectSettings().DesignWithoutAppearance and ' Disena su aspecto.' or ''),'success')
     end)
     RegisterCommand('personajes',function(source)
         if source==0 then return reply(source,'Comando personal dentro del juego.') end
@@ -209,7 +213,7 @@ function OSDevtools.bindCore(options)
     exports('GetActiveCharacter',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.dto(player) end)
     exports('GetActiveEmployment',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.employment(player) end)
     exports('ResolveCharacter',function(value) if not reader() then return nil,'resource_not_authorized' end;return core.find(value) end)
-    exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.3',provider='os_devtools'} end)
+    exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.4',provider='os_devtools'} end)
     -- Ingreso de un recurso de trabajo autorizado (Payers) al personaje activo; queda en la auditoria.
     exports('PayCharacter',function(player,amount,account,reason)
         local caller=GetInvokingResource()
@@ -224,6 +228,32 @@ function OSDevtools.bindCore(options)
             c[account]=c[account]+n;return true
         end)
         return ok==true,ok and nil or why
+    end)
+    -- Cobro de un recurso autorizado (Chargers, p. ej. la tienda de os_security) al personaje activo.
+    -- Falla sin tocar nada si no hay saldo suficiente en esa cuenta; queda en la auditoria.
+    exports('ChargeCharacter',function(player,amount,account,reason)
+        local caller=GetInvokingResource()
+        if not caller or not OSDevtools.CoreConfig.Chargers[caller] then return false,'resource_not_authorized' end
+        local n=math.tointeger(tonumber(amount));account=account or 'bank'
+        if not n or n<=0 or n>OSDevtools.CoreConfig.MaxCharge or (account~='bank' and account~='cash') then return false,'invalid_amount' end
+        local alias,err=core.ensure(player);if not alias then return false,err end
+        local label=('charge %s %s %s %d %s'):format(caller,alias,account,n,tostring(reason or ''):gsub('[^%w_%-]',''):sub(1,40))
+        local ok,why=core.change(player,label,function(d)
+            local c=d.characters[alias];if not c then return false,'Personaje no encontrado.' end
+            if (tonumber(c[account]) or 0)<n then return false,'insufficient_funds' end
+            c[account]=c[account]-n;return true
+        end)
+        return ok==true,ok and nil or why
+    end)
+    -- Saldo del personaje activo (solo lectura) para recursos lectores.
+    exports('GetCharacterBalance',function(player)
+        if not reader() then return nil,'resource_not_authorized' end
+        return core.balance(player)
+    end)
+    -- Pantalla de carga: el jugador aun conecta (id temporal), por eso se leen sus identificadores.
+    exports('GetLoadingPreview',function(player)
+        if not reader() or not tonumber(player) then return nil end
+        return core.preview(GetPlayerIdentifiers(player))
     end)
     exports('GetCharacterSpawn',function(player) if reader() then return core.spawnSelection(player) end end)
     -- Compatibilidad con el inventario pretest; el contrato nuevo es GetActiveCharacter.

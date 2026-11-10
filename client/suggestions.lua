@@ -10,6 +10,7 @@ local SUGGESTIONS={
     {'/ceder','Cede el vehiculo que conduces',{P('destino',DEST)}},
     {'/personaje','Sin argumentos lista tus personajes; con uno, lo selecciona',{P('personaje','alias o char:ID (opcional)')}},
     {'/personajes','Abre el selector para cambiar de personaje o crear uno nuevo',{}},
+    {'/disenarpj','Abre el disenador de aspecto del personaje (cara, pelo y ropa)',{}},
     {'/guardarpos','Guarda tu posicion actual',{}},
     {'/ultimaubicacion','Muestra tus ultimas posiciones guardadas',{}},
     {'/guardarropa','Guarda la ropa y el aspecto actuales en tu personaje',{}},

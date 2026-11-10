@@ -17,10 +17,10 @@ function OSDevtools.Core.new(options)
         local account=core.account(source);local alias=account and state.bindings[account]
         return alias and state.characters[alias].account==account and alias or nil
     end
-    function core.account(source)
-        if not u.integer(source,1,2147483647) or not options.connected(source) then return nil,'player_disconnected' end
+    -- Cuenta persistente a partir de una lista de identificadores (misma regla al conectar y en juego).
+    local function accountOf(identifiers)
         local known,preferred,seen={},{},{}
-        for _,identifier in ipairs(options.identifiers(source) or {}) do
+        for _,identifier in ipairs(identifiers or {}) do
             if domain.account(identifier) then
                 local kind=identifier:match('^([^:]+):')
                 if seen[kind] and seen[kind]~=identifier then return nil,'ambiguous_identifiers' end
@@ -36,6 +36,20 @@ function OSDevtools.Core.new(options)
             end
         end
         return known.account or preferred[1],(known.account or preferred[1]) and nil or 'no_persistent_identifier'
+    end
+    function core.account(source)
+        if not u.integer(source,1,2147483647) or not options.connected(source) then return nil,'player_disconnected' end
+        return accountOf(options.identifiers(source))
+    end
+    -- Resumen para la pantalla de carga: personaje con el que entrara y cuantos tiene la cuenta.
+    -- Solo lectura; no crea identidades ni vinculos.
+    function core.preview(identifiers)
+        if not core.status() or type(identifiers)~='table' then return nil end
+        local account=accountOf(identifiers);if not account then return nil end
+        local count=0;for _,c in pairs(state.characters) do if c.account==account then count=count+1 end end
+        local alias=state.bindings[account];local c=alias and state.characters[alias]
+        if not c or c.account~=account then return {characters=count} end
+        return {characters=count,alias=alias,job=c.job,rank=c.rank,dead=c.life=='dead'}
     end
     function core.change(actor,label,callback)
         if not core.status() then return false,'Registro bloqueado; revisar almacenamiento.' end
@@ -105,6 +119,12 @@ function OSDevtools.Core.new(options)
         local alias,err=core.ensure(source);local c=alias and state.characters[alias]
         if not c then return nil,err end
         return {characterId=c.id,job=c.job,rank=c.rank,duty=c.duty==true}
+    end
+    -- Saldo del personaje activo (solo lectura).
+    function core.balance(source)
+        local alias,err=core.ensure(source);local c=alias and state.characters[alias]
+        if not c then return nil,err end
+        return {cash=tonumber(c.cash) or 0,bank=tonumber(c.bank) or 0}
     end
     function core.find(value)
         local alias,err=core.resolve(value);local c=alias and state.characters[alias]
@@ -216,7 +236,10 @@ function OSDevtools.Core.new(options)
         local token=('%d:%d:%d'):format(source,spawnCounter,options.clock())
         pending[source]={id=id,token=token,position=point,at=options.clock(),expires=options.clock()+config.SpawnMilliseconds,fallback=fallback==true}
         local alias=core.lookup(source);local c=alias and state.characters[alias]
-        options.spawn(source,{token=token,position=point,reason=reason,appearance=c and c.id==id and u.copy(c.appearance) or nil})
+        local current=c and c.id==id
+        -- Sin apariencia guardada (personaje recien creado): el cliente abre el disenador al aparecer.
+        local design=current and c.appearance==nil and (config.CharacterSelect or {}).DesignWithoutAppearance==true or nil
+        options.spawn(source,{token=token,position=point,reason=reason,appearance=current and u.copy(c.appearance) or nil,design=design})
         return true
     end
     function core.spawnAck(source,token)
@@ -392,8 +415,13 @@ function OSDevtools.Core.new(options)
         local ok,why=core.createCharacter(source,source,alias)
         if not ok then return false,why end
         createdAt[source]=now
-        -- Una cuenta sin personaje activo aparece directamente con el nuevo: la seleccion termina.
-        if pending[source] then selecting[source]=nil end
+        -- Se entra directamente con el personaje nuevo (y su disenador). Una cuenta sin personaje
+        -- activo ya aparece con el desde createCharacter.
+        if pending[source] then selecting[source]=nil;return true,alias end
+        local switched,reason
+        if selecting[source] then switched,reason=core.choose(source,alias)
+        else switched,reason=core.select(source,source,'alias:'..alias,false) end
+        if not switched then return true,alias,reason end
         return true,alias
     end
     function core.snapshot() return core.status() and u.copy(state) or nil end

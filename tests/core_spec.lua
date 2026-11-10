@@ -129,6 +129,16 @@ test('Active employment export reflects setjob/setduty for trusted readers only 
     c.origin='os_security';e=c.exports.GetActiveEmployment(1);assert(e.job=='gruppe6' and e.rank=='tecnico' and e.duty==true)
     c.origin='untrusted';assert(not c.exports.GetActiveEmployment(1))
 end)
+test('Shop exports: authorized resources charge and refund the active character; balances only for trusted readers',function()
+    local c=fixture();c.origin=nil;c.command('givemoney',1,{'1','5000','bank'})
+    c.origin='os_security';local start=c.exports.GetCharacterBalance(1).bank;assert(start>=5000)
+    local ok,why=c.exports.ChargeCharacter(1,1200,'bank','g6shop_1');assert(ok and not why and c.exports.GetCharacterBalance(1).bank==start-1200)
+    ok,why=c.exports.ChargeCharacter(1,start+1,'bank','g6shop_2');assert(not ok and why=='insufficient_funds' and c.exports.GetCharacterBalance(1).bank==start-1200)
+    assert(not c.exports.ChargeCharacter(1,0,'bank') and not c.exports.ChargeCharacter(1,10,'crypto') and not c.exports.ChargeCharacter(1,1.5,'bank'))
+    assert(c.exports.PayCharacter(1,1200,'bank','g6shop_refund') and c.exports.GetCharacterBalance(1).bank==start)
+    c.origin='untrusted';ok,why=c.exports.ChargeCharacter(1,10,'bank');assert(not ok and why=='resource_not_authorized' and not c.exports.GetCharacterBalance(1))
+    c.origin='os_gruppesechs';assert(not c.exports.ChargeCharacter(1,10,'bank')) -- pagar nominas no da permiso para cobrar
+end)
 test('Admin panel section reads and changes characters through the core and rechecks permissions',function()
     local c=fixture();local allowed=true
     local section=OSDevtools.AdminSections.characters({core=c.core,can=function() return allowed end})

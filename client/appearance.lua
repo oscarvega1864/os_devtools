@@ -156,7 +156,7 @@ CreateThread(function()
     while true do
         Wait(10000)
         local ped=PlayerPedId()
-        if Appearance.ready and not Appearance.locked and not Appearance.spawning and DoesEntityExist(ped) and not IsEntityDead(ped) then
+        if Appearance.ready and not Appearance.locked and not Appearance.spawning and not Appearance.designing and DoesEntityExist(ped) and not IsEntityDead(ped) then
             local data=Appearance.capture(ped)
             local signature=Appearance.signature(data)
             if data and signature~=Appearance.last then

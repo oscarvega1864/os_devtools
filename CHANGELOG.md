@@ -1,8 +1,18 @@
 # Changelog
 
-## 0.1.4 — En desarrollo
+## 0.1.4 — Selector y diseñador de personaje
+
+- Cobros para la tienda G6: `ChargeCharacter(jugador, cantidad, cuenta, motivo)` cobra al personaje activo
+  solo a recursos autorizados en `Chargers` (tope `MaxCharge`), sin tocar nada si no hay saldo; y
+  `GetCharacterBalance(jugador)` da efectivo y banco a lectores autorizados. `os_security` puede además
+  devolver con `PayCharacter`. El HUD se actualiza tras cada cobro.
+- Administradores de txAdmin: el acceso de admin se concede solo cuando txAdmin está listo, se comprueba que
+  `add_principal` funcionó (y si falta la línea del `server.cfg` lo dice) y se retira al cambiar la lista de
+  administradores.
 
 - Selector de personaje al entrar (NUI): lista solo los personajes de la cuenta del jugador con empleo, dinero, último lugar y estado; la elección se valida en servidor y aparece con el flujo normal. Mientras se elige no se guardan posiciones ni muertes del ped provisional. Creación propia con nombre y apellido (alias `nombre_apellido`, límite por cuenta y espera). `/personajes` abre el mismo panel dentro del juego para cambiar. Cierra la pantalla de carga de `os_loadscreen`.
+- Diseñador de personaje: al crear un personaje se entra con él y, sin apariencia guardada, se abre un editor NUI (herencia, rasgos, pelo, cejas, barba, ojos, ropa y accesorios, cámara cara/cuerpo). Se guarda por la ruta validada de apariencia. `/disenarpj` lo reabre.
+- Export `GetLoadingPreview(jugador)` (lectores autorizados, ahora también `os_loadscreen`): personaje vinculado y número de personajes de la cuenta del jugador que conecta, sin crear identidades.
 - Apariencia por personaje: modelo, ropa, accesorios y cabeza freemode, validada y persistida en el registro; restauración al aparecer con la pantalla en negro; guardado automático por cambios y `/guardarropa`. Un modelo ausente conserva los datos y bloquea el guardado automático.
 - `/crearpropiedad <numero> <precio>` sin nombre, tipo ni titular; duplicados rechazados. `/crearnegocio <tipo> <nombre> <precio>` con siete categorías, ID automático y sin titular. Blips de negocios por categoría, sin duplicados. Datos y metadatos anteriores conservados.
 - Vehículos creados por el servidor (OneSync, `CREATE_VEHICLE_SERVER_SETTER`) tras comprobar el tipo del modelo; corrige "sin entidad de red". Los fijos guardan su posición y se recrean tras reiniciar el servidor, sin duplicarse; aspecto por state bag. Fijos antiguos completan su tipo al entrar un administrador.
