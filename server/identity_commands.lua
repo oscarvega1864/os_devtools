@@ -81,13 +81,81 @@ function OSDevtools.bindCore(options)
     end,false)
     local requested={}
     AddEventHandler('onResourceStart',function(name) if name=='spawnmanager' then requested={} end end)
-    RegisterNetEvent('osdev:requestCharacterSpawn',function()
-        local player=source
-        if not OSDevtools.Util.integer(player,1,2147483647) or requested[player] then return end
+    local function spawnOnConnect(player)
+        if requested[player] then return end
         local alias,err=core.ensure(player)
         if not alias then return reply(player,err or 'Identidad no disponible.') end
         requested[player]=true;core.requestSpawn(player,'connect')
+    end
+    RegisterNetEvent('osdev:requestCharacterSpawn',function()
+        local player=source
+        if not OSDevtools.Util.integer(player,1,2147483647) then return end
+        spawnOnConnect(player)
     end)
+    -- Selector de personaje (NUI). El cliente solo envia un alias o un nombre; la cuenta,
+    -- la propiedad del personaje y la posicion de aparicion se deciden aqui.
+    local selectAt={}
+    local function selectSettings() return OSDevtools.CoreConfig.CharacterSelect or {} end
+    local function throttled(player)
+        local now=GetGameTimer();local last=selectAt[player]
+        if last and now>=last and now-last<(selectSettings().RequestMilliseconds or 1000) then return true end
+        selectAt[player]=now;return false
+    end
+    local function sendRoster(player,mode,message)
+        local rows,err=core.roster(player)
+        if not rows then return reply(player,err or 'Identidad no disponible.','error') end
+        local settings=selectSettings()
+        TriggerClientEvent('osdev:characterSelect',player,{mode=mode,characters=rows,allowCreate=settings.AllowCreate==true,
+            maxCharacters=settings.MaxCharacters or 1,message=message})
+    end
+    RegisterNetEvent('osdev:requestCharacterSelect',function()
+        local player=source
+        if not OSDevtools.Util.integer(player,1,2147483647) or throttled(player) then return end
+        if not selectSettings().Enabled or core.hasSpawned(player) then return spawnOnConnect(player) end
+        if core.isSelecting(player) then return sendRoster(player,'connect') end
+        -- Crea la identidad automatica de un jugador nuevo (si procede) antes de listar.
+        core.ensure(player)
+        local ok,err=core.beginSelection(player)
+        if not ok then
+            if err=='already_spawned' or err=='spawn_in_progress' then return end
+            return reply(player,err or 'Identidad no disponible.','error')
+        end
+        sendRoster(player,'connect')
+    end)
+    local function selectResult(player,ok,message)
+        TriggerClientEvent('osdev:characterSelectResult',player,{ok=ok==true,message=message})
+    end
+    RegisterNetEvent('osdev:chooseCharacter',function(alias)
+        local player=source
+        if not OSDevtools.Util.integer(player,1,2147483647) or type(alias)~='string' or #alias>40 then return end
+        if throttled(player) then return selectResult(player,false,'Demasiado rapido; vuelve a intentarlo.') end
+        if core.isSelecting(player) then
+            local ok,err=core.choose(player,alias)
+            if ok then requested[player]=true end -- la aparicion de entrada ya esta en marcha
+            return selectResult(player,ok,ok and nil or err)
+        end
+        if not core.hasSpawned(player) then return selectResult(player,false,'Aun no has entrado al servidor.') end
+        local ok,err=core.select(player,player,'alias:'..alias,false)
+        selectResult(player,ok,ok and nil or err)
+        if ok then reply(player,'Ahora juegas como '..label('alias:'..alias)..'.','success') end
+    end)
+    RegisterNetEvent('osdev:createOwnCharacter',function(first,last)
+        local player=source
+        if not OSDevtools.Util.integer(player,1,2147483647) then return end
+        if not core.isSelecting(player) and not core.hasSpawned(player) then return end
+        if throttled(player) then return selectResult(player,false,'Demasiado rapido; vuelve a intentarlo.') end
+        local ok,result=core.createOwn(player,first,last)
+        if not ok then return selectResult(player,false,result) end
+        if not core.isSelecting(player) and not core.hasSpawned(player) then requested[player]=true;return selectResult(player,true) end -- ya aparece con el nuevo
+        sendRoster(player,core.isSelecting(player) and 'connect' or 'switch','Personaje '..result..' creado.')
+    end)
+    RegisterCommand('personajes',function(source)
+        if source==0 then return reply(source,'Comando personal dentro del juego.') end
+        if not selectSettings().Enabled then return reply(source,'El selector de personajes esta desactivado; usa /personaje.') end
+        if core.isSelecting(source) then return sendRoster(source,'connect') end
+        if not core.hasSpawned(source) then return reply(source,'Espera a terminar de aparecer.','warning') end
+        sendRoster(source,'switch')
+    end,false)
     RegisterNetEvent('osdev:characterSpawned',function(token) core.spawnAck(source,token) end)
     RegisterNetEvent('osdev:spawnFailed',function(token) core.spawnFailed(source,token) end)
     RegisterNetEvent('osdev:deathObserved',function() core.observe(source) end)
@@ -113,7 +181,7 @@ function OSDevtools.bindCore(options)
         SetTimeout(500,function() if GetPlayerName(player) then local alias,err=core.ensure(player);if not alias then reply(player,err,'error') end end end)
     end)
     AddEventHandler('playerDropped',function()
-        local player=tonumber(source);core.drop(player);requested[player]=nil;appearanceAt[player]=nil;appearanceHold[player]=nil
+        local player=tonumber(source);core.drop(player);requested[player]=nil;appearanceAt[player]=nil;appearanceHold[player]=nil;selectAt[player]=nil
     end)
     local function checkpoint(reason)
         local sources={};for _,id in ipairs(GetPlayers()) do sources[#sources+1]=tonumber(id) end

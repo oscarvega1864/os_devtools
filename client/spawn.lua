@@ -64,7 +64,8 @@ local function setup()
         OSDevtools.Notify('Falta spawnmanager; iniciar antes de os_devtools o configurar Mode=external.','error')
         return
     end
-    exports.spawnmanager:setAutoSpawn(false);TriggerServerEvent('osdev:requestCharacterSpawn')
+    -- El servidor decide: selector de personaje al entrar o aparicion directa (ya jugando / selector desactivado).
+    exports.spawnmanager:setAutoSpawn(false);TriggerServerEvent('osdev:requestCharacterSelect')
 end
 RegisterNetEvent('osdev:spawnCharacter',function(context) if source==65535 and mode=='spawnmanager' then controller.receive(context) end end)
 RegisterNetEvent('osdev:spawnAccepted',function(token) if source==65535 then controller.accepted(token) end end)

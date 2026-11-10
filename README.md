@@ -12,6 +12,7 @@ La identidad inicial es automática. **`/setpj` permanece retirado por la instru
 | --- | --- |
 | `/personaje` | Personal: lista personajes propios y sus IDs. |
 | `/personaje <alias\|char:ID>` | Selecciona un personaje de la misma cuenta; guarda primero la posición anterior. |
+| `/personajes` | Personal: abre el selector (NUI) para cambiar de personaje o crear uno propio. |
 | `/crearpersonaje <idJugador> <alias>` | `osdev.identity`: crea un personaje para esa cuenta; no sustituye al activo si ya existe. |
 | `/seleccionarpersonaje <idJugador> <alias\|char:ID>` | `osdev.identity`: selecciona un personaje ya perteneciente a la cuenta. |
 | `/vincularpersonaje <idJugador> <alias\|char:ID> CONFIRMAR` | `osdev.identity`: vincula un personaje heredado sin propietario; registra la intervención. No reasigna personajes de otra cuenta. |
@@ -155,3 +156,7 @@ Pendiente ejecutar en FiveM, con copia de seguridad y dos cuentas de prueba:
 6. Reiniciar el recurso y el servidor de prueba; revisar saldos, bienes, posiciones, snapshots y preferencias de HUD. Validar también falta/reinicio de spawnmanager y colisiones en las ubicaciones configuradas.
 
 No se ha realizado una ejecución controlada de estos casos en FiveM en esta entrega. No se ha hecho push ni se avanza a otra fase.
+
+## Selector de personaje al entrar
+
+Al conectar, el cliente pide `osdev:requestCharacterSelect`. Si el jugador aún no ha aparecido en esta sesión (marca `osdevSpawned` en su state bag, que sobrevive a reinicios de os_devtools), el servidor lo pone en modo selección y envía solo los personajes de su cuenta (license); el ped espera congelado e invisible con una cámara fija (`OSDevtools.SelectScene` en `config/spawn.lua`) y se cierra la pantalla de carga. Mientras elige no se guardan posiciones ni se registran muertes. La elección (`osdev:chooseCharacter`) se valida en servidor: el personaje debe ser de esa cuenta; luego aparece con el flujo normal. Crear personaje propio (`osdev:createOwnCharacter`) usa nombre y apellido (letras A-Z, 2-16) para formar el alias `nombre_apellido`, con límite y espera configurables en `CharacterSelect` de `config/core.lua`. Con `Enabled=false` se vuelve a la aparición directa. La pantalla de carga vive en el recurso aparte `os_loadscreen`.

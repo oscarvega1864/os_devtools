@@ -1,0 +1,69 @@
+/* Selector de personaje. Paleta del HUD de Devtools; sin color-scheme en :root (ver NUI gotchas). */
+.selector{--bg:rgba(8,15,18,.86);--card:rgba(255,255,255,.035);--card-hi:rgba(116,219,159,.09);--line:rgba(154,189,171,.18);
+  --line-hi:rgba(116,219,159,.65);--text:#f1f6f3;--muted:#9fb8ad;--accent:#74db9f;--accent-ink:#06150d;--warn:#f0b35a;--danger:#ff7b72;
+  position:fixed;inset:0;display:flex;align-items:stretch;color:var(--text);font-family:"Segoe UI",Roboto,Arial,sans-serif;
+  background:linear-gradient(90deg,rgba(4,9,11,.92) 0%,rgba(4,9,11,.72) 34%,rgba(4,9,11,.08) 62%,rgba(4,9,11,0) 100%);
+  animation:sel-in .45s ease-out;user-select:none}
+.selector.switch{background:rgba(4,9,11,.55);backdrop-filter:blur(3px);align-items:center;justify-content:center}
+.selector.hidden{display:none}
+body.selecting .hud{display:none}
+@keyframes sel-in{from{opacity:0}to{opacity:1}}
+@keyframes sel-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sel-panel{width:min(470px,92vw);margin-left:5vw;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:4vh 0}
+.selector.switch .sel-panel{margin:0;padding:22px;max-height:88vh;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.sel-head{position:relative}
+.sel-brand{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:3px;color:var(--muted)}
+.sel-mark{width:9px;height:9px;border-radius:2px;background:var(--accent);box-shadow:0 0 12px rgba(116,219,159,.7)}
+.sel-head h1{margin:10px 0 4px;font-size:34px;font-weight:700;letter-spacing:-.5px;line-height:1.05}
+.sel-sub{margin:0;font-size:13px;color:var(--muted)}
+.sel-close{position:absolute;top:0;right:0;font:600 11px/1 inherit;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer}
+.sel-close:hover{color:var(--text);border-color:var(--muted)}
+.sel-list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding:2px 4px 2px 0;scrollbar-width:thin}
+.sel-list::-webkit-scrollbar{width:6px}.sel-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+.card{position:relative;display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:12px 14px;background:var(--card);
+  border:1px solid var(--line);border-radius:11px;cursor:pointer;transition:background .15s,border-color .15s,transform .15s;animation:sel-rise .35s ease-out both}
+.card:hover{background:rgba(255,255,255,.06)}
+.card.selected{background:var(--card-hi);border-color:var(--line-hi);box-shadow:inset 3px 0 0 var(--accent)}
+.card.dead .avatar{filter:grayscale(1);opacity:.6}
+.avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:16px;letter-spacing:.5px;
+  background:linear-gradient(145deg,#2a5c48,#173328);color:#dff7ea;border:1px solid rgba(116,219,159,.35)}
+.avatar.female{background:linear-gradient(145deg,#5c2a4f,#33172c);border-color:rgba(232,140,200,.35);color:#fbe3f3}
+.avatar.other{background:linear-gradient(145deg,#4a4f5c,#262a33);border-color:rgba(180,190,210,.3)}
+.who{min-width:0}
+.name{font-size:17px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{margin-top:3px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta .alias{font-family:Consolas,"Cascadia Mono",monospace;font-size:11px;opacity:.85}
+.chips{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:10.5px;font-weight:600;letter-spacing:.3px;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:#cfe0d8;border:1px solid rgba(255,255,255,.06)}
+.chip.last{background:rgba(116,219,159,.14);color:var(--accent);border-color:rgba(116,219,159,.3)}
+.chip.dead{background:rgba(255,123,114,.12);color:var(--danger);border-color:rgba(255,123,114,.3)}
+.chip.duty{background:rgba(240,179,90,.12);color:var(--warn);border-color:rgba(240,179,90,.3)}
+.money{text-align:right;font-variant-numeric:tabular-nums}
+.money .cash{font-size:15px;font-weight:700}.money .cash::before{content:"$";color:var(--accent);margin-right:2px}
+.money .bank{margin-top:3px;font-size:11px;color:var(--muted)}
+.empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:11px;font-size:13px}
+.sel-create{padding:14px;border:1px solid var(--line-hi);border-radius:11px;background:rgba(116,219,159,.06);animation:sel-rise .25s ease-out}
+.sel-create.hidden{display:none}
+.sel-create-title{font-size:13px;font-weight:700;letter-spacing:.4px;margin-bottom:10px}
+.sel-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sel-fields label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.4px}
+.sel-fields input{font:500 14px/1.2 inherit;color:var(--text);background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:7px;padding:9px 10px;outline:none;user-select:text}
+.sel-fields input:focus{border-color:var(--line-hi);box-shadow:0 0 0 3px rgba(116,219,159,.15)}
+.sel-create-foot{margin-top:11px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sel-alias{font-family:Consolas,"Cascadia Mono",monospace;font-size:11.5px;color:var(--muted)}
+.sel-create-actions{display:flex;gap:8px}
+.sel-message{min-height:18px;font-size:12.5px;color:var(--muted)}
+.sel-message.error{color:var(--danger)}.sel-message.ok{color:var(--accent)}
+.sel-foot{display:flex;align-items:center;gap:12px}
+.sel-count{flex:1;font-size:11.5px;color:var(--muted);text-align:center}
+.btn{font:650 13px/1 inherit;letter-spacing:.3px;color:var(--text);background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:8px;padding:11px 16px;cursor:pointer;transition:background .15s,opacity .15s,transform .1s}
+.btn:hover:not(:disabled){background:rgba(255,255,255,.14)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.ghost{background:transparent}
+.btn.primary{min-width:130px;background:var(--accent);color:var(--accent-ink);border-color:transparent;box-shadow:0 6px 20px rgba(116,219,159,.25)}
+.btn.primary:hover:not(:disabled){background:#8be8b2}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.hidden{display:none}
+.selector.busy .sel-list,.selector.busy .sel-foot{opacity:.6;pointer-events:none}
+.sel-hint{font-size:11px;color:var(--muted);opacity:.75}
+@media(max-height:720px){.sel-head h1{font-size:27px}.sel-list{max-height:46vh}}

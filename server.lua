@@ -587,7 +587,11 @@ core=OSDevtools.Core.new({
     SetPlayerRoutingBucket(src,context.position.bucket)
     TriggerClientEvent('osdev:spawnCharacter',src,context)
   end,
-  spawnAccepted=function(src,token) TriggerClientEvent('osdev:spawnAccepted',src,token) end
+  spawnAccepted=function(src,token) TriggerClientEvent('osdev:spawnAccepted',src,token) end,
+  -- Marca de sesion en el state bag del jugador: sobrevive a un reinicio de os_devtools, asi
+  -- quien ya esta jugando no vuelve a ver el selector de entrada.
+  markSpawned=function(src) local ok,p=pcall(Player,src);if ok and p and p.state then p.state:set('osdevSpawned',true,true) end end,
+  wasSpawned=function(src) local ok,p=pcall(Player,src);return ok and p and p.state and p.state.osdevSpawned==true or false end
 })
 OSDevtools.Runtime=core
 vehicles=OSDevtools.Vehicles.new({state=function() return state end,change=core.change,now=GetGameTimer})

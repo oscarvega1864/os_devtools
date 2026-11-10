@@ -12,5 +12,7 @@ OSDevtools.CoreConfig = {
     -- Respuesta policial NPC de GTA si nadie la ha cambiado con /policianpc (true = GTA normal).
     NpcPoliceDefault=true,
     -- Peatones y trafico de GTA si nadie lo ha cambiado con /npcs (true = GTA normal).
-    AmbientNpcsDefault=true
+    AmbientNpcsDefault=true,
+    -- Selector al entrar: lista los personajes de la cuenta (license) y permite crear uno propio.
+    CharacterSelect={Enabled=true,AllowCreate=true,MaxCharacters=4,CreateCooldownMilliseconds=5000,RequestMilliseconds=1000}
 }

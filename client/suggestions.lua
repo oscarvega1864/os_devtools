@@ -9,6 +9,7 @@ local SUGGESTIONS={
     {'/pagar','Paga efectivo a otro personaje',{P('destino',DEST),P('cantidad','Dinero en mano a enviar')}},
     {'/ceder','Cede el vehiculo que conduces',{P('destino',DEST)}},
     {'/personaje','Sin argumentos lista tus personajes; con uno, lo selecciona',{P('personaje','alias o char:ID (opcional)')}},
+    {'/personajes','Abre el selector para cambiar de personaje o crear uno nuevo',{}},
     {'/guardarpos','Guarda tu posicion actual',{}},
     {'/ultimaubicacion','Muestra tus ultimas posiciones guardadas',{}},
     {'/guardarropa','Guarda la ropa y el aspecto actuales en tu personaje',{}},

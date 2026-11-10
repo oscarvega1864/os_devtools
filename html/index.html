@@ -1,7 +1,35 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="select.css"></head>
 <body><div id="hud" class="hud hidden" aria-label="Información del personaje">
   <div class="cell id"><div class="label">ID</div><div id="playerId" class="value">--</div></div>
   <div class="separator"></div>
   <div class="cell cash"><div class="label">DINERO EN MANO</div><div class="moneyrow"><span class="dollar">$</span><span id="cash" class="value">--</span></div></div>
-</div><script src="app.js"></script></body></html>
+</div>
+<section id="selector" class="selector hidden" aria-label="Selector de personaje">
+  <div class="sel-panel">
+    <header class="sel-head">
+      <div class="sel-brand"><span class="sel-mark"></span>OSCAR</div>
+      <h1 id="selTitle">Elige tu personaje</h1>
+      <p id="selSubtitle" class="sel-sub">Personajes asociados a tu cuenta</p>
+      <button id="selClose" class="sel-close hidden" type="button" aria-label="Cerrar">Esc</button>
+    </header>
+    <div id="selList" class="sel-list" role="listbox" aria-label="Personajes"></div>
+    <form id="selCreate" class="sel-create hidden" autocomplete="off" novalidate>
+      <div class="sel-create-title">Nuevo personaje</div>
+      <div class="sel-fields">
+        <label>Nombre<input id="selFirst" maxlength="16" spellcheck="false" placeholder="Ana"></label>
+        <label>Apellido<input id="selLast" maxlength="16" spellcheck="false" placeholder="López"></label>
+      </div>
+      <div class="sel-create-foot"><span id="selAlias" class="sel-alias">alias: —</span>
+        <div class="sel-create-actions"><button id="selCancel" type="button" class="btn ghost">Cancelar</button><button id="selCreateBtn" type="submit" class="btn">Crear</button></div>
+      </div>
+    </form>
+    <div id="selMessage" class="sel-message" role="status" aria-live="polite"></div>
+    <footer class="sel-foot">
+      <button id="selNew" class="btn ghost" type="button">+ Nuevo personaje</button>
+      <span id="selCount" class="sel-count"></span>
+      <button id="selEnter" class="btn primary" type="button" disabled>Entrar</button>
+    </footer>
+  </div>
+</section>
+<script src="app.js"></script><script src="select.js"></script></body></html>

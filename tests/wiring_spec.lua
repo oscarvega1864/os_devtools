@@ -209,5 +209,6 @@ end)
 DevtoolsTest={fixture=fixture,test=test,legacy=legacy}
 dofile('/repo/tests/core_spec.lua')
 dofile('/repo/tests/spawn_client_spec.lua')
+dofile('/repo/tests/character_select_spec.lua')
 DevtoolsTest=nil
 print(('Wiring/core tests: %d | Passed: %d | Failed: %d'):format(total,total-failures,failures));__failures=failures

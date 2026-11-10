@@ -5,6 +5,8 @@ function OSDevtools.Core.new(options)
     local storage=options.storage
     local state=storage and u.copy(storage.data) or {characters={},bindings={},vehicles={},businesses={},properties={},audit={}}
     local active,cache,pending,completed={}, {}, {}, {}
+    -- selecting: jugador en el selector de entrada (aun sin aparecer); spawned: ya aparecio en esta sesion.
+    local selecting,spawned,createdAt={},{},{}
     local loaded=false
     local spawnCounter=0
     local core={}
@@ -127,7 +129,7 @@ function OSDevtools.Core.new(options)
         local context=active[source]
         local alias=context and context.alias
         local c=alias and state.characters[alias]
-        if not c or pending[source] then return nil end
+        if not c or pending[source] or selecting[source] then return nil end
         if c.life=='dead' then
             if reason~='disconnect' then return nil end
             local deadPoint=core.position(source) or c.lastDeathPosition
@@ -234,6 +236,8 @@ function OSDevtools.Core.new(options)
         end)
         if not saved then return false end
         pending[source]=nil;cache[source]=point;completed[source]={token=token,expires=options.clock()+10000}
+        selecting[source]=nil;spawned[source]=true
+        if options.markSpawned then options.markSpawned(source) end
         options.spawnAccepted(source,token);return true
     end
     function core.spawnFailed(source,token)
@@ -244,6 +248,8 @@ function OSDevtools.Core.new(options)
         return core.requestSpawn(source,'safe_fallback',true)
     end
     function core.observe(source)
+        -- En el selector el ped aun no es el del personaje: ni muerte ni posicion cuentan.
+        if selecting[source] then return true end
         local alias=core.ensure(source);local c=alias and state.characters[alias]
         if not c then return false end
         local context=pending[source]
@@ -281,6 +287,7 @@ function OSDevtools.Core.new(options)
     function core.drop(source)
         core.savePositions({source},'disconnect',true)
         active[source],cache[source],pending[source],completed[source]=nil,nil,nil,nil
+        selecting[source],spawned[source],createdAt[source]=nil,nil,nil
         options.changed(source,nil)
     end
     function core.setSpawn(actor,target)
@@ -321,6 +328,73 @@ function OSDevtools.Core.new(options)
             if context.alias==alias and options.connected(player) and core.lookup(player)==alias then result[#result+1]=player end
         end
         return result
+    end
+    -- Selector de personaje. Solo trabaja con personajes de la cuenta del propio jugador.
+    function core.beginSelection(source)
+        if not core.status() then return false,'storage_unavailable' end
+        if not options.connected(source) then return false,'player_disconnected' end
+        if spawned[source] or (options.wasSpawned and options.wasSpawned(source)) then return false,'already_spawned' end
+        if pending[source] then return false,'spawn_in_progress' end
+        selecting[source]=true;return true
+    end
+    function core.isSelecting(source) return selecting[source]==true end
+    function core.hasSpawned(source) return spawned[source]==true or (options.wasSpawned and options.wasSpawned(source)) == true end
+    function core.roster(source)
+        if not core.status() then return nil,'storage_unavailable' end
+        local account,err=core.account(source);if not account then return nil,err end
+        local current=state.bindings[account];local rows={}
+        for alias,c in pairs(state.characters) do
+            if c.account==account then
+                local p=c.lastValidPosition or c.lastPosition
+                local seen=(c.lastLogoutPosition and c.lastLogoutPosition.at) or (p and (p.at or p.time)) or nil
+                rows[#rows+1]={alias=alias,characterId=c.id,cash=c.cash,bank=c.bank,job=c.job,rank=c.rank,duty=c.duty==true,
+                    dead=c.life=='dead',active=alias==current,lastSeen=seen,
+                    position=p and {x=p.x,y=p.y,z=p.z} or nil,model=c.appearance and c.appearance.model or nil}
+            end
+        end
+        table.sort(rows,function(a,b)
+            if a.active~=b.active then return a.active end
+            if (a.lastSeen or 0)~=(b.lastSeen or 0) then return (a.lastSeen or 0)>(b.lastSeen or 0) end
+            return a.alias<b.alias
+        end)
+        return rows
+    end
+    -- Eleccion durante la entrada: no hay posicion previa que guardar (el ped aun no es el personaje).
+    function core.choose(source,alias)
+        if not selecting[source] then return false,'La seleccion de entrada ya no esta disponible.' end
+        if pending[source] then return false,'Aparicion en curso.' end
+        local account,err=core.account(source);if not account then return false,err end
+        local c=type(alias)=='string' and state.characters[alias]
+        if not c or c.account~=account then return false,'Ese personaje no pertenece a tu cuenta.' end
+        if state.bindings[account]~=alias then
+            local ok,why=core.change(source,'choose_character '..c.id,function(d) d.bindings[account]=alias;return true end)
+            if not ok then return false,why end
+        end
+        if not active[source] or active[source].alias~=alias then notifyChange(source,alias) end
+        local ok,why=core.requestSpawn(source,'character_select')
+        if not ok then return false,why end
+        selecting[source]=nil
+        return true,alias
+    end
+    -- Alta de un personaje propio: nombre y apellido (letras) forman el alias nombre_apellido.
+    function core.createOwn(source,first,last)
+        local settings=config.CharacterSelect or {}
+        if not settings.AllowCreate then return false,'La creacion de personajes esta desactivada.' end
+        local function part(value) return type(value)=='string' and #value>=2 and #value<=16 and value:match('^[A-Za-z]+$') and value:lower() or nil end
+        first,last=part(first),part(last)
+        if not first or not last then return false,'Nombre y apellido: solo letras sin acentos, de 2 a 16 cada uno.' end
+        local account,err=core.account(source);if not account then return false,err end
+        local owned=0;for _,c in pairs(state.characters) do if c.account==account then owned=owned+1 end end
+        if owned>=(settings.MaxCharacters or 1) then return false,('Limite alcanzado: %d personajes por cuenta.'):format(settings.MaxCharacters or 1) end
+        local now=options.clock()
+        if createdAt[source] and now>=createdAt[source] and now-createdAt[source]<(settings.CreateCooldownMilliseconds or 0) then return false,'Espera unos segundos antes de crear otro personaje.' end
+        local alias=first..'_'..last
+        local ok,why=core.createCharacter(source,source,alias)
+        if not ok then return false,why end
+        createdAt[source]=now
+        -- Una cuenta sin personaje activo aparece directamente con el nuevo: la seleccion termina.
+        if pending[source] then selecting[source]=nil end
+        return true,alias
     end
     function core.snapshot() return core.status() and u.copy(state) or nil end
     return core
