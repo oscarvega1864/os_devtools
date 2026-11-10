@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- El HUD de ID y dinero se oculta mientras se mira una cámara en directo de os_security (evento local
+  `os_security:cameraView`) y vuelve al salir.
+
 ## 0.1.4 — Selector y diseñador de personaje
 
 - Cobros para la tienda G6: `ChargeCharacter(jugador, cantidad, cuenta, motivo)` cobra al personaje activo

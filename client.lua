@@ -110,9 +110,15 @@ end)
 -- HUD de desarrollo: ID de sesion + efectivo del personaje activo.
 local hudEnabled = GetResourceKvpString('osdev_hud_visible') ~= 'false'
 local hud = {playerId=nil,cash=nil,character=nil}
+-- Otros recursos pueden pedir pantalla limpia (p. ej. la vista en directo de camaras de os_security).
+local hudHiddenBy = {}
 local function renderHud()
-  SendNUIMessage({action='hud',visible=hudEnabled and not IsPauseMenuActive(),playerId=hud.playerId,cash=hud.cash,character=hud.character})
+  SendNUIMessage({action='hud',visible=hudEnabled and not IsPauseMenuActive() and next(hudHiddenBy)==nil,playerId=hud.playerId,cash=hud.cash,character=hud.character})
 end
+AddEventHandler('os_security:cameraView',function(active)
+  hudHiddenBy.camera = active==true or nil
+  renderHud()
+end)
 RegisterNetEvent('osdev:hudData',function(data)
   if type(data)~='table' then return end
   hud.playerId=tonumber(data.playerId) or GetPlayerServerId(PlayerId())
