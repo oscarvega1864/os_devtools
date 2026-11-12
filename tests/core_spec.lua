@@ -139,6 +139,21 @@ test('Shop exports: authorized resources charge and refund the active character;
     c.origin='untrusted';ok,why=c.exports.ChargeCharacter(1,10,'bank');assert(not ok and why=='resource_not_authorized' and not c.exports.GetCharacterBalance(1))
     c.origin='os_gruppesechs';assert(not c.exports.ChargeCharacter(1,10,'bank')) -- pagar nominas no da permiso para cobrar
 end)
+test('Bank provider exports: sheets by persistent ID, search and audited adjustments only for Bankers',function()
+    local c=fixture();c.origin=nil;c.command('givemoney',1,{'1','3000','bank'})
+    c.origin='o-link';local sheet=c.exports.BankGetCharacter(1)
+    assert(sheet and sheet.alias=='oscar_vega' and sheet.characterId:match('^oschar_') and sheet.connected and sheet.source==1 and not sheet.account)
+    local id,start=sheet.characterId,sheet.bank
+    assert(c.exports.BankFindCharacter(id).alias=='oscar_vega' and not c.exports.BankFindCharacter('oscar_vega') and not c.exports.BankFindCharacter('oschar_9999999999'))
+    local found=c.exports.BankSearch('oscar veg');assert(#found==1 and found[1].characterId==id)
+    assert(#c.exports.BankSearch('o')==0 and #c.exports.BankSearch(id)==1)
+    local ok,value=c.exports.BankAdjust(id,'bank',-500,'retirada cajero');assert(ok and value==start-500 and c.exports.BankGetCharacter(1).bank==start-500)
+    ok,value=c.exports.BankAdjust(id,'bank',-(start+1),'x');assert(not ok and value=='insufficient_funds' and c.exports.BankGetCharacter(1).bank==start-500)
+    assert(c.exports.BankAdjust(id,'cash',200,'deposito') and c.exports.BankGetCharacter(1).cash>=200)
+    assert(not c.exports.BankAdjust(id,'crypto',10) and not c.exports.BankAdjust(id,'bank',0) and not c.exports.BankAdjust(id,'bank',1.5) and not c.exports.BankAdjust('oscar_vega','bank',10))
+    local audit=c.snapshot().audit;assert(audit[#audit].operation:match('^bank o%-link oscar_vega cash %+200'))
+    c.origin='os_security';ok,value=c.exports.BankAdjust(id,'bank',10);assert(not ok and value=='resource_not_authorized' and not c.exports.BankGetCharacter(1) and #c.exports.BankSearch('oscar')==0)
+end)
 test('Admin panel section reads and changes characters through the core and rechecks permissions',function()
     local c=fixture();local allowed=true
     local section=OSDevtools.AdminSections.characters({core=c.core,can=function() return allowed end})

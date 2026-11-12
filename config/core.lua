@@ -12,6 +12,9 @@ OSDevtools.CoreConfig = {
     Payers={os_gruppesechs=true,os_security=true}, MaxPayment=50000,
     -- Recursos que pueden cobrar al personaje activo con ChargeCharacter (tienda G6), y su tope por cobro.
     Chargers={os_security=true}, MaxCharge=500000,
+    -- Proveedor bancario: recursos que leen fichas de personaje (tambien desconectados), buscan
+    -- personajes y mueven efectivo/banco con BankAdjust. o-link es el puente de Oxide Banking.
+    Bankers={['o-link']=true}, MaxBankMove=10000000, MaxBankSearch=50,
     -- Respuesta policial NPC de GTA si nadie la ha cambiado con /policianpc (true = GTA normal).
     NpcPoliceDefault=true,
     -- Peatones y trafico de GTA si nadie lo ha cambiado con /npcs (true = GTA normal).

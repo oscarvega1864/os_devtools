@@ -47,6 +47,10 @@ local SUGGESTIONS={
     {'/ospermisos','Diagnostico de tus permisos',{}},
     {'/oscomandos','Lista de comandos de os_devtools',{}}
 }
+-- Con el HUD de Devtools apagado (setr osdev_hud false), /hud es de otro recurso (Oxide HUD).
+if GetConvar('osdev_hud','true')=='false' then
+    for i=#SUGGESTIONS,1,-1 do if SUGGESTIONS[i][1]=='/hud' then table.remove(SUGGESTIONS,i) end end
+end
 CreateThread(function()
     for _,s in ipairs(SUGGESTIONS) do TriggerEvent('chat:addSuggestion',s[1],s[2],s[3]) end
 end)

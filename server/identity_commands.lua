@@ -262,4 +262,59 @@ function OSDevtools.bindCore(options)
         if not reader() or type(alias)~='string' then return nil end
         local found=core.find('alias:'..alias);return found and found.alias or nil
     end)
+    -- Proveedor bancario (Bankers): fichas por ID persistente, busqueda y movimientos de saldo.
+    -- Todo cambio pasa por core.change y queda en la auditoria con el recurso que lo pidio.
+    local function banker()
+        local caller=GetInvokingResource()
+        return caller~=nil and OSDevtools.CoreConfig.Bankers[caller]==true,caller
+    end
+    local function bankSheet(alias)
+        local sheet=core.sheet(alias);if not sheet then return nil end
+        local found=core.find('alias:'..alias)
+        sheet.connected=found~=nil and found.connected==true;sheet.source=found and found.source or nil
+        return sheet
+    end
+    local function aliasOf(characterId)
+        if type(characterId)~='string' or not characterId:match('^oschar_%d+$') then return nil end
+        return (core.resolve('char:'..characterId))
+    end
+    exports('BankGetCharacter',function(player)
+        if not banker() then return nil,'resource_not_authorized' end
+        local alias=core.lookup(tonumber(player));return alias and bankSheet(alias) or nil
+    end)
+    exports('BankFindCharacter',function(characterId)
+        if not banker() then return nil,'resource_not_authorized' end
+        local alias=aliasOf(characterId);return alias and bankSheet(alias) or nil
+    end)
+    exports('BankSearch',function(query,limit)
+        if not banker() or type(query)~='string' then return {} end
+        local raw=query:lower()
+        local needle=raw:gsub('[%s_]+',' '):gsub('^ ',''):gsub(' $','')
+        if #needle<2 then return {} end
+        limit=math.min(math.tointeger(tonumber(limit)) or 20,OSDevtools.CoreConfig.MaxBankSearch)
+        local out={}
+        for _,alias in ipairs(core.aliases()) do
+            if #out>=limit then break end
+            local sheet=core.sheet(alias)
+            if sheet and (alias:gsub('_',' '):find(needle,1,true) or sheet.characterId:lower()==raw) then out[#out+1]=bankSheet(alias) end
+        end
+        return out
+    end)
+    exports('BankAdjust',function(characterId,account,delta,reason)
+        local allowed,caller=banker();if not allowed then return false,'resource_not_authorized' end
+        local n=math.tointeger(tonumber(delta))
+        if not n or n==0 or math.abs(n)>OSDevtools.CoreConfig.MaxBankMove or (account~='bank' and account~='cash') then return false,'invalid_amount' end
+        local alias=aliasOf(characterId);if not alias then return false,'character_not_found' end
+        local label=('bank %s %s %s %+d %s'):format(caller,alias,account,n,tostring(reason or ''):gsub('[^%w_%-]',''):sub(1,40))
+        local balance
+        local ok,why=core.change(0,label,function(d)
+            local c=d.characters[alias];if not c then return false,'character_not_found' end
+            local value=(tonumber(c[account]) or 0)+n
+            if value<0 then return false,'insufficient_funds' end
+            if value>2147483647 then return false,'out_of_range' end
+            c[account]=value;balance=value;return true
+        end)
+        if ok then return true,balance end
+        return false,why
+    end)
 end

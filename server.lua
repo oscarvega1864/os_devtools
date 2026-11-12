@@ -21,7 +21,9 @@ local function pushHud(src)
   TriggerClientEvent('osdev:hudData',src,{
     playerId=src,
     cash=c and c.cash or nil,
+    bank=c and c.bank or nil, -- lo usa el adaptador os_devtools de o-link (Oxide HUD)
     character=alias,
+    characterId=c and c.id or nil, -- mismo identificador que usa o-link en el servidor
   })
 end
 local function pushAllHud()

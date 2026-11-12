@@ -108,7 +108,10 @@ end)
 
 
 -- HUD de desarrollo: ID de sesion + efectivo del personaje activo.
-local hudEnabled = GetResourceKvpString('osdev_hud_visible') ~= 'false'
+-- `setr osdev_hud false` en server.cfg lo apaga para todos (p. ej. con Oxide HUD) y deja /hud libre.
+-- Los datos (osdev:hudData) se siguen enviando: los usa el adaptador de o-link.
+local hudAllowed = GetConvar('osdev_hud','true') ~= 'false'
+local hudEnabled = hudAllowed and GetResourceKvpString('osdev_hud_visible') ~= 'false'
 local hud = {playerId=nil,cash=nil,character=nil}
 -- Otros recursos pueden pedir pantalla limpia (p. ej. la vista en directo de camaras de os_security).
 local hudHiddenBy = {}
@@ -126,12 +129,14 @@ RegisterNetEvent('osdev:hudData',function(data)
   hud.character=data.character
   renderHud()
 end)
-RegisterCommand('hud',function()
-  hudEnabled=not hudEnabled
-  SetResourceKvp('osdev_hud_visible',tostring(hudEnabled))
-  renderHud()
-  msg(hudEnabled and 'HUD activado.' or 'HUD oculto.')
-end,false)
+if hudAllowed then
+  RegisterCommand('hud',function()
+    hudEnabled=not hudEnabled
+    SetResourceKvp('osdev_hud_visible',tostring(hudEnabled))
+    renderHud()
+    msg(hudEnabled and 'HUD activado.' or 'HUD oculto.')
+  end,false)
+end
 CreateThread(function()
   Wait(1500)
   local lastPause=nil

@@ -135,6 +135,17 @@ function OSDevtools.Core.new(options)
         end
         return dto
     end
+    -- Ficha economica de un personaje (copia, solo lectura) para el proveedor bancario.
+    function core.sheet(alias)
+        local c=core.status() and type(alias)=='string' and state.characters[alias]
+        if not c then return nil end
+        return {characterId=c.id,alias=alias,cash=tonumber(c.cash) or 0,bank=tonumber(c.bank) or 0,job=c.job,rank=c.rank,duty=c.duty==true}
+    end
+    function core.aliases()
+        local out={}
+        if core.status() then for alias in pairs(state.characters) do out[#out+1]=alias end end
+        table.sort(out);return out
+    end
     function core.position(source)
         local point,health=options.world(source)
         if not domain.position(point,false) or not config.AllowedBuckets[point.bucket] then return nil,health end
