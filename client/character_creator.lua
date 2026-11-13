@@ -122,8 +122,9 @@ local function placeCamera()
     local ped=PlayerPedId()
     local face=view.mode=='face'
     local base=GetEntityCoords(ped)
-    local distance,height=face and 0.75 or 2.4,face and 0.65 or 0.15
-    local target=face and GetPedBoneCoords(ped,31086,0.0,0.0,0.0) or vector3(base.x,base.y,base.z+0.05)
+    -- Cuerpo entero: mas lejos y a la altura de la cadera, mirando algo por debajo, para que entren los pies.
+    local distance,height=face and 0.75 or 3.1,face and 0.65 or -0.05
+    local target=face and GetPedBoneCoords(ped,31086,0.0,0.0,0.0) or vector3(base.x,base.y,base.z-0.2)
     -- La camara mira al ped desde delante segun su orientacion inicial (no gira con el).
     local h=math.rad(view.baseHeading)
     local dir=vector3(-math.sin(h),math.cos(h),0.0)
@@ -131,7 +132,7 @@ local function placeCamera()
     if not view.cam then view.cam=CreateCam('DEFAULT_SCRIPTED_CAMERA',true) end
     SetCamCoord(view.cam,position.x,position.y,position.z)
     PointCamAtCoord(view.cam,target.x,target.y,target.z)
-    SetCamFov(view.cam,face and 30.0 or 40.0)
+    SetCamFov(view.cam,face and 30.0 or 45.0)
     SetCamActive(view.cam,true);RenderScriptCams(true,true,350,true,true)
 end
 
