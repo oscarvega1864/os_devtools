@@ -163,6 +163,17 @@ function OSDevtools.bindCore(options)
     RegisterNetEvent('osdev:characterSpawned',function(token) core.spawnAck(source,token) end)
     RegisterNetEvent('osdev:spawnFailed',function(token) core.spawnFailed(source,token) end)
     RegisterNetEvent('osdev:deathObserved',function() core.observe(source) end)
+    -- Armas del personaje: el cliente solo envia cuando cambian; el servidor limita la frecuencia y valida.
+    local weaponsAt={}
+    RegisterNetEvent('osdev:weapons',function(list)
+        local player=source
+        if not OSDevtools.Util.integer(player,1,2147483647) or not OSDevtools.WeaponsConfig then return end
+        local now=GetGameTimer();local last=weaponsAt[player]
+        if last and now>=last and now-last<OSDevtools.WeaponsConfig.MinSaveMilliseconds then return end
+        weaponsAt[player]=now
+        core.saveWeapons(player,list)
+    end)
+    AddEventHandler('playerDropped',function() weaponsAt[source]=nil end)
     -- Apariencia: guardado automatico (solo si cambia) y manual con /guardarropa.
     RegisterNetEvent('osdev:saveAppearance',function(appearance,manual)
         local player=source
@@ -213,7 +224,7 @@ function OSDevtools.bindCore(options)
     exports('GetActiveCharacter',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.dto(player) end)
     exports('GetActiveEmployment',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.employment(player) end)
     exports('ResolveCharacter',function(value) if not reader() then return nil,'resource_not_authorized' end;return core.find(value) end)
-    exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.5',provider='os_devtools'} end)
+    exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.6',provider='os_devtools'} end)
     -- Ingreso de un recurso de trabajo autorizado (Payers) al personaje activo; queda en la auditoria.
     exports('PayCharacter',function(player,amount,account,reason)
         local caller=GetInvokingResource()

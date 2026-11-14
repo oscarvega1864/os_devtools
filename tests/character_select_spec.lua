@@ -119,3 +119,29 @@ test('Loading preview shows only the connecting account own bound character and 
     local fresh=c.exports.GetLoadingPreview(9);assert(fresh.characters==0 and fresh.alias==nil and not c.snapshot().bindings['license:'..string.rep('c',40)])
     c.origin='untrusted';assert(c.exports.GetLoadingPreview(1)==nil);c.origin=nil
 end)
+
+test('Weapons are saved per character, given back on spawn, ignored while switching and validated',function()
+    local c=fixture();withSecond(c);net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:chooseCharacter',1,'oscar_vega')
+    local context=ack(c,1);assert(type(context.weapons)=='table' and #context.weapons==0)
+    local list={{name='WEAPON_PISTOL',ammo=60,components={'COMPONENT_AT_PI_SUPP','COMPONENT_AT_PI_FLSH'}},{name='WEAPON_KNIFE',ammo=0,tint=0}}
+    net(c,'osdev:weapons',1,list)
+    local saved=c.snapshot().characters.oscar_vega.weapons
+    assert(saved and #saved==2 and saved[1].name=='WEAPON_KNIFE' and saved[2].ammo==60 and saved[2].components[1]=='COMPONENT_AT_PI_FLSH' and saved[1].tint==nil)
+    local writes=c.writes;net(c,'osdev:weapons',1,{list[2],list[1]});assert(c.writes==writes) -- mismo equipo: no se reescribe
+    -- Rechazos: arma o accesorio fuera de la lista, municion fuera de rango, duplicados, campos extra.
+    for _,bad in ipairs({{{name='WEAPON_RAILGUN_FAKE',ammo=1}},{{name='WEAPON_PISTOL',ammo=-1}},{{name='WEAPON_PISTOL',ammo=99999}},
+        {{name='WEAPON_PISTOL',ammo=1},{name='WEAPON_PISTOL',ammo=2}},{{name='WEAPON_PISTOL',ammo=1,components={'COMPONENT_FAKE'}}},{{name='WEAPON_PISTOL',ammo=1,extra=true}},'x'}) do
+        net(c,'osdev:weapons',1,bad);assert(#c.snapshot().characters.oscar_vega.weapons==2)
+    end
+    -- Cambio de personaje: lo que llegue antes de aparecer el nuevo no se guarda en ninguno.
+    net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:chooseCharacter',1,'second_person')
+    net(c,'osdev:weapons',1,{{name='WEAPON_RPG',ammo=5}})
+    assert(c.snapshot().characters.second_person.weapons==nil and #c.snapshot().characters.oscar_vega.weapons==2)
+    local second=ack(c,1);assert(#second.weapons==0)
+    net(c,'osdev:weapons',1,{{name='WEAPON_BAT',ammo=0}});assert(c.snapshot().characters.second_person.weapons[1].name=='WEAPON_BAT')
+    -- De vuelta al primero: aparece con sus armas.
+    net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:chooseCharacter',1,'oscar_vega')
+    local back=ack(c,1);assert(#back.weapons==2 and back.weapons[2].name=='WEAPON_PISTOL')
+    -- Vaciar el equipo borra la lista guardada.
+    net(c,'osdev:weapons',1,{});assert(c.snapshot().characters.oscar_vega.weapons==nil)
+end)

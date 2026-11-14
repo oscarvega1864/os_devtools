@@ -250,7 +250,9 @@ function OSDevtools.Core.new(options)
         local current=c and c.id==id
         -- Sin apariencia guardada (personaje recien creado): el cliente abre el disenador al aparecer.
         local design=current and c.appearance==nil and (config.CharacterSelect or {}).DesignWithoutAppearance==true or nil
-        options.spawn(source,{token=token,position=point,reason=reason,appearance=current and u.copy(c.appearance) or nil,design=design})
+        local W=OSDevtools.WeaponsConfig
+        options.spawn(source,{token=token,position=point,reason=reason,appearance=current and u.copy(c.appearance) or nil,design=design,
+            weapons=W and W.Enabled and current and (c.weapons and u.copy(c.weapons) or {}) or nil})
         return true
     end
     function core.spawnAck(source,token)
@@ -298,6 +300,7 @@ function OSDevtools.Core.new(options)
             local saved=core.change(0,'death '..c.id,function(d)
                 local record=d.characters[alias];local death=stamp(point,'death',record.lastDeathPosition)
                 record.lastDeathPosition=death;record.life='dead'
+                if OSDevtools.WeaponsConfig and OSDevtools.WeaponsConfig.LoseOnDeath then record.weapons=nil end
                 record.deaths[#record.deaths+1]={id=record.nextDeath,characterId=record.id,position=u.copy(death),cause='unknown'}
                 record.nextDeath=record.nextDeath+1
                 if #record.deaths>config.MaxDeaths then table.remove(record.deaths,1) end
@@ -372,6 +375,31 @@ function OSDevtools.Core.new(options)
         selecting[source]=true;return true
     end
     function core.isSelecting(source) return selecting[source]==true end
+    -- Armas del personaje activo informadas por su cliente (solo tras aparecer, vivo y sin cambio de personaje en curso).
+    -- Las armas del juego no son autoritativas en el servidor: se limita a armas y accesorios de la lista permitida.
+    function core.saveWeapons(source,value)
+        local W=OSDevtools.WeaponsConfig
+        if not W or not W.Enabled then return false,'disabled' end
+        local alias=core.lookup(source);local c=alias and state.characters[alias]
+        -- completed: aparicion confirmada desde el ultimo cambio de personaje (notifyChange lo borra).
+        if not c or spawned[source]~=true or pending[source] or not completed[source] or selecting[source] or c.life=='dead' then return false,'not_ready' end
+        local list=domain.normalizeWeapons(value)
+        if not list then return false,'invalid' end
+        local before=c.weapons or {}
+        if #before==#list then
+            local same=true
+            for i,w in ipairs(list) do
+                local b=before[i]
+                if b.name~=w.name or b.ammo~=w.ammo or b.tint~=w.tint or table.concat(b.components or {},',')~=table.concat(w.components or {},',') then same=false;break end
+            end
+            if same then return true end
+        end
+        local id=c.id
+        return core.change(0,'weapons '..id,function(d)
+            local record=d.characters[alias];if not record or record.id~=id then return false end
+            record.weapons=#list>0 and list or nil;return true
+        end)
+    end
     function core.hasSpawned(source) return spawned[source]==true or (options.wasSpawned and options.wasSpawned(source)) == true end
     function core.roster(source)
         if not core.status() then return nil,'storage_unavailable' end

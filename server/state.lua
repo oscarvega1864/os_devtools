@@ -64,6 +64,38 @@ function domain.appearance(value)
     return value.head==nil or head(value.head)
 end
 -- Copia normalizada: los decimales se fijan con la misma precision que las posiciones.
+-- Armas del personaje: lista ordenada de { name, ammo, tint?, components? } con nombres permitidos.
+function domain.weapons(value)
+    local W=OSDevtools.WeaponsConfig
+    if not W or not u.array(value,W.MaxWeapons) then return false end
+    local seen={}
+    for _,w in ipairs(value) do
+        if not u.object(w,{name=true,ammo=true,tint=true,components=true}) or type(w.name)~='string' or not W.Allowed[w.name] or seen[w.name]
+            or not u.integer(w.ammo,0,W.MaxAmmo) or (w.tint~=nil and not u.integer(w.tint,0,W.MaxTint)) then return false end
+        seen[w.name]=true
+        if w.components~=nil then
+            if not u.array(w.components,W.MaxComponents) then return false end
+            local parts={}
+            for _,c in ipairs(w.components) do
+                if type(c)~='string' or not W.AllowedComponents[c] or parts[c] then return false end
+                parts[c]=true
+            end
+        end
+    end
+    return true
+end
+-- Copia normalizada (orden estable) para comparar y guardar; nil si no es valida.
+function domain.normalizeWeapons(value)
+    if not domain.weapons(value) then return nil end
+    local list={}
+    for _,w in ipairs(value) do
+        local parts=nil
+        if w.components and #w.components>0 then parts={};for _,c in ipairs(w.components) do parts[#parts+1]=c end;table.sort(parts) end
+        list[#list+1]={name=w.name,ammo=w.ammo,tint=w.tint~=0 and w.tint or nil,components=parts}
+    end
+    table.sort(list,function(a,b) return a.name<b.name end)
+    return list
+end
 function domain.normalizeAppearance(value)
     if not domain.appearance(value) then return nil end
     local copy=u.copy(value)
@@ -142,6 +174,7 @@ function domain.snapshot(data)
         end
         if c.life ~= nil and c.life ~= 'alive' and c.life ~= 'dead' then return nil,'Estado vital invalido.' end
         if c.appearance ~= nil and not domain.appearance(c.appearance) then return nil,'Apariencia de personaje invalida.' end
+        if c.weapons ~= nil and not domain.weapons(c.weapons) then return nil,'Armas de personaje invalidas.' end
         if type(c.spawnOverridePending)~='nil' and type(c.spawnOverridePending)~='boolean' then return nil,'Indicador de spawn invalido.' end
         if not u.integer(c.nextDeath,1,2147483647) or not u.array(c.deaths,OSDevtools.CoreConfig.MaxDeaths) then return nil,'Historial de muertes invalido.' end
         local previous=0

@@ -7,6 +7,8 @@ local function release()
     -- El guardado automatico solo se reanuda cuando la aparicion termina.
     OSDevtools.Appearance.spawning=false
     if currentPlan then OSDevtools.Appearance.settled(currentPlan);currentPlan=nil end
+    -- Armas del personaje (client/weapons.lua): se dan con la aparicion ya confirmada.
+    if OSDevtools.Weapons then OSDevtools.Weapons.release() end
 end
 local controller=OSDevtools.SpawnClient.new({
     schedule=SetTimeout,
@@ -18,6 +20,7 @@ local controller=OSDevtools.SpawnClient.new({
         if GetResourceState('spawnmanager')~='started' then callback(false);return end
         local appearance=OSDevtools.Appearance
         appearance.spawning=true
+        if OSDevtools.Weapons then OSDevtools.Weapons.hold(context and context.weapons) end
         CreateThread(function()
             -- El modelo y la ropa se aplican con la pantalla en negro: spawnmanager
             -- retira el fundido antes de devolver el control.

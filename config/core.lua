@@ -1,6 +1,6 @@
 -- Solo servidor. No contiene concesiones ACE ni datos de cuentas.
 OSDevtools.CoreConfig = {
-    Version='0.1.5', MaxFileBytes=8*1024*1024, MaxDeaths=64,
+    Version='0.1.6', MaxFileBytes=8*1024*1024, MaxDeaths=64,
     PositionSeconds=60, MonitorMilliseconds=1000, MinPositionMove=0.5,
     SpawnMilliseconds=20000, RespawnMilliseconds=5000, AppearanceMinMilliseconds=8000,
     AllowedBuckets={ [0]=true },

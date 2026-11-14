@@ -1,6 +1,6 @@
 local total,failures=0,0
 local function test(name,run) total=total+1;local ok,err=pcall(run);if not ok then failures=failures+1 end;__report(name,ok,tostring(err)) end
-local scripts={'config/spawn.lua','config/business.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
+local scripts={'config/spawn.lua','config/business.lua','config/weapons.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
     'server/storage/codec.lua','server/storage/resource_files.lua','server/storage/json.lua','server/state.lua','server/appearance_xml.lua','server/storage.lua','server/core.lua',
     'server/auth_identity.lua','server/authorization_hub.lua','server/auth_boot.lua','server/identity_commands.lua','server/admin_section.lua','server/vehicles.lua','server.lua'}
 local function legacy()
@@ -101,7 +101,7 @@ end
 test('All Lua syntax and actual manifest paths load while preserving pretest position commands',function()
     for _,file in ipairs(__files) do assert(loadfile('/repo/'..file),file) end
     local environment={fx_version=function(v) assert(v=='cerulean') end,game=function(v) assert(v=='gta5') end,lua54=function() end,author=function() end,description=function() end,
-        version=function(v) assert(v=='0.1.5') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
+        version=function(v) assert(v=='0.1.6') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
         shared_script=function(file) assert(loadfile('/repo/'..file)) end,shared_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
         client_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,ui_page=function() end,files=function() end}
     assert(loadfile('/repo/fxmanifest.lua','t',environment))()

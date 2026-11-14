@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.6 — Armas por personaje
+
+- Las armas se guardan con cada personaje (`characters.<alias>.weapons`): arma, munición, tinte y accesorios
+  (supresores, linternas, miras, empuñaduras y cargadores ampliados). Al aparecer o cambiar de personaje se quitan
+  las del ped y se dan las de ese personaje.
+- El cliente comprueba cada 3 s y solo envía si cambian (armas o accesorios al momento; solo munición, como mucho
+  cada 30 s). El servidor solo acepta envíos tras la aparición confirmada del personaje activo, vivo y sin un cambio
+  de personaje en curso, con un mínimo de 1,5 s entre guardados.
+- Solo se guardan armas y accesorios de `config/weapons.lua` (las armas añadidas por otros recursos hay que incluirlas
+  ahí). `LoseOnDeath` (por defecto `false`): si se activa, el personaje pierde las armas guardadas al morir.
+- Limitación: las armas las informa el cliente (en GTA no son autoritativas en el servidor); se limita a la lista
+  permitida y a la munición máxima.
+
 ## 0.1.5
 
 - El HUD de ID y dinero se oculta mientras se mira una cámara en directo de os_security (evento local
