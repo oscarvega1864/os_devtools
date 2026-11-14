@@ -400,6 +400,13 @@ function OSDevtools.Core.new(options)
             record.weapons=#list>0 and list or nil;return true
         end)
     end
+    function core.weapons(source)
+        local alias=core.lookup(source);local c=alias and state.characters[alias]
+        if not c then return nil end
+        local list={}
+        for _,w in ipairs(c.weapons or {}) do list[#list+1]={name=w.name,ammo=w.ammo} end
+        return list
+    end
     function core.hasSpawned(source) return spawned[source]==true or (options.wasSpawned and options.wasSpawned(source)) == true end
     function core.roster(source)
         if not core.status() then return nil,'storage_unavailable' end

@@ -142,6 +142,7 @@ test('Weapons are saved per character, given back on spawn, ignored while switch
     -- De vuelta al primero: aparece con sus armas.
     net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:chooseCharacter',1,'oscar_vega')
     local back=ack(c,1);assert(#back.weapons==2 and back.weapons[2].name=='WEAPON_PISTOL')
+    local read=c.core.weapons(1);assert(#read==2 and read[2].name=='WEAPON_PISTOL' and read[2].ammo==60 and read[1].components==nil)
     -- Vaciar el equipo borra la lista guardada.
     net(c,'osdev:weapons',1,{});assert(c.snapshot().characters.oscar_vega.weapons==nil)
 end)

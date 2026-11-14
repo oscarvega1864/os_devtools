@@ -224,6 +224,8 @@ function OSDevtools.bindCore(options)
     exports('GetActiveCharacter',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.dto(player) end)
     exports('GetActiveEmployment',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.employment(player) end)
     exports('ResolveCharacter',function(value) if not reader() then return nil,'resource_not_authorized' end;return core.find(value) end)
+    -- Armas guardadas del personaje activo (nombres y municion), para lectores autorizados (p. ej. el arco de os_security).
+    exports('GetCharacterWeapons',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.weapons(player) end)
     exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.6',provider='os_devtools'} end)
     -- Ingreso de un recurso de trabajo autorizado (Payers) al personaje activo; queda en la auditoria.
     exports('PayCharacter',function(player,amount,account,reason)
