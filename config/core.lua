@@ -6,7 +6,7 @@ OSDevtools.CoreConfig = {
     AllowedBuckets={ [0]=true },
     DefaultSpawn={x=-1037.6,y=-2737.8,z=20.17,h=329,bucket=0},
     HospitalSpawn={x=298.63,y=-584.31,z=43.26,h=70,bucket=0},
-    IdentityReaders={os_inventory=true,os_security=true,os_admin=true,os_gruppesechs=true,os_loadscreen=true}, -- os_security: objetos por personaje via os_inventory
+    IdentityReaders={os_inventory=true,os_security=true,os_admin=true,os_gruppesechs=true,os_loadscreen=true,os_emotes=true}, -- os_security: objetos por personaje via os_inventory
     -- Recursos que pueden ingresar dinero (nominas de trabajos) con PayCharacter, y su tope por pago.
     -- os_security: devolucion de una compra de la tienda G6 que no se pudo entregar.
     Payers={os_gruppesechs=true,os_security=true}, MaxPayment=50000,
