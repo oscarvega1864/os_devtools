@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 — Lector os_emotes
+
+- `os_emotes` puede leer el personaje activo (`IdentityReaders`) para guardar el andar y la expresión de cada personaje.
+
 ## 0.1.6 — Armas por personaje
 
 - Las armas se guardan con cada personaje (`characters.<alias>.weapons`): arma, munición, tinte y accesorios

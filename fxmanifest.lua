@@ -3,7 +3,7 @@ game 'gta5'
 lua54 'yes'
 author 'OSCAR - entorno de pruebas'
 description 'Herramientas standalone de personajes, economia y activos para DEV; NO produccion'
-version '0.1.6'
+version '0.1.7'
 shared_scripts { 'config/spawn.lua', 'config/business.lua', 'config/weapons.lua' }
 server_scripts {
     'config/authorization.lua', 'config/core.lua', 'server/lib/util.lua',
