@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.1.8 — Llaves, menú de negocio y ficha del personaje
+## 0.1.8 — Trabajos, concesionarios, llaves, menú de negocio y /setcar
+
+- **`/setcar`**: `reparar [id|matrícula]` (también a distancia: lo repara quien tiene el coche cargado o, si nadie,
+  se recrea en el sitio), `livery <n> [native|mod48]` (guardada en los vehículos registrados), `gas <0-100>` y
+  `negocio|faccion meter|sacar <id>`: los coches de la flota los usan el titular y la plantilla sin llave.
+- Concesionarios con **vista previa**: el coche elegido aparece en el escaparate con el color marcado y una cámara
+  gira alrededor; el catálogo pasa a un panel lateral. `/concesionarios` permite mover el punto de vista previa.
+  Corregido: pagar con tarjeta cobraba en efectivo.
+- **Subpermisos de bienes** (`osdev.assets.properties`, `.businesses`, `.factions`, `.vehicles`, `.dealers`); el hub de
+  autorización sigue la cadena de permisos padre. `/puntotrabajo` pide `osdev.jobs`.
+- Envío a la web del panel (vía os_admin) de bienes, plantillas, personajes y la auditoría. Export `GetVehiclePlate`.
 
 - **Trabajos públicos** (`config/jobs.lua`): LSPD, BCSO, FIB, Bomberos y EMS no son negocios. Rangos fijos, sueldo por
   rango que paga el ayuntamiento por hora de servicio, puntos de servicio en sus sedes (E) y `/trabajo` para que los
