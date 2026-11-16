@@ -32,6 +32,13 @@ test('Limited moderators can inspect without receiving money, assets, identity o
     assert(c.hub.can(3,'osdev.inspect'))
     for _,scope in ipairs({'osdev.admin','osdev.economy','osdev.assets','osdev.jobs','osdev.identity','ossecurity.admin'}) do assert(not c.hub.can(3,scope)) end
 end)
+test('Asset sub-permissions follow the parent chain and stay separate from each other',function()
+    local c=fixture()
+    assert(c.hub.can(1,'osdev.assets.factions') and c.hub.can(1,'osdev.assets.dealers')) -- osdev.admin -> osdev.assets -> sub
+    c.aces[3]['osdev.assets.factions']=true
+    assert(c.hub.can(3,'osdev.assets.factions') and not c.hub.can(3,'osdev.assets.properties') and not c.hub.can(3,'osdev.assets'))
+    c.auth(2);assert(c.hub.grant(0,2,'assets',10));assert(c.hub.can(2,'osdev.assets.vehicles') and not c.hub.can(2,'osdev.economy'))
+end)
 test('Normal players cannot obtain a lease or authorize themselves',function()
     local c=fixture();assert(not c.hub.grant(0,4,'devtools_admin',10))
     assert(not c.hub.grant(4,4,'devtools_admin',10));assert(not c.hub.can(4,'osdev.admin'))
@@ -114,3 +121,39 @@ test('Invalid profiles, sources, durations and identities never produce authoriz
     c.ids[2]='Same visible name';assert(not c.hub.txEvent('monitor',{netid=2,isAdmin=true}) and not c.hub.can(2,'osdev.admin'))
 end)
 print(('Authorization tests: %d | Passed: %d | Failed: %d'):format(total,total-failures,failures));__failures=failures
+-- Envio de bienes a la web del panel.
+dofile('/repo/server/panel_sync.lua')
+do
+    local before=failures
+    local label=function(category,id,r) return category..'#'..id end
+    test('Panel sync sends new, changed and deleted assets and splits factions',function()
+        local s={properties={['200']={id=200,price=50000,position={x=1.234,y=2,z=3}}},businesses={['1']={id=1,type='ltd',name='LTD',price=1},['2']={id=2,type='faccion',name='Ballas',price=0,job='ballas'}},vehicles={}}
+        local changes,last=OSDevtools.PanelSync.diff(s,{},label)
+        assert(#changes==3 and last['factions:2'] and last['businesses:1'] and last['properties:200'].x==1.23)
+        assert(#OSDevtools.PanelSync.diff(s,last,label)==0)
+        s.properties['200'].owner='oscar_vega';s.businesses['1']=nil
+        changes,last=OSDevtools.PanelSync.diff(s,last,label)
+        assert(#changes==2 and changes[1].deleted and changes[1].category=='businesses' and changes[2].owner=='oscar_vega')
+    end)
+    test('Panel sync forwards only audit entries after the marker',function()
+        local audit={{time=1,actor='a',operation='x 1'},{time=2,actor='a',operation='y 2'}}
+        local list,marker=OSDevtools.PanelSync.newAudit(audit,nil);assert(#list==0)
+        audit[3]={time=3,actor='b',operation='crear 3'};table.remove(audit,1)
+        list,marker=OSDevtools.PanelSync.newAudit(audit,marker);assert(#list==1 and list[1].operation=='crear 3')
+        list=OSDevtools.PanelSync.newAudit(audit,marker);assert(#list==0)
+    end)
+    test('Panel sync sends business staff and character changes',function()
+        local s={properties={},vehicles={},businesses={['3']={id=3,type='ltd',name='LTD',price=1,owner='ana_lopez',staff={oscar_vega='encargado'}}},
+            characters={oscar_vega={id='oschar_0000000004',account='license:'..string.rep('a',40),cash=10,bank=20,job='ltd',rank='encargado',duty=true,life='alive'}}}
+        local changes,last=OSDevtools.PanelSync.diff(s,{},label)
+        assert(changes[1].extra.staff[1].alias=='oscar_vega' and changes[1].extra.staff[1].rank=='encargado')
+        s.businesses['3'].staff.oscar_vega='empleado'
+        assert(#OSDevtools.PanelSync.diff(s,last,label)==1)
+        local people,known=OSDevtools.PanelSync.characters(s,{})
+        assert(#people==1 and people[1].id==4 and people[1].ref=='oschar_0000000004' and people[1].duty==true)
+        assert(#OSDevtools.PanelSync.characters(s,known)==0)
+        s.characters.oscar_vega.cash=11;assert(#OSDevtools.PanelSync.characters(s,known)==1)
+        s.characters.oscar_vega=nil;local gone=OSDevtools.PanelSync.characters(s,known);assert(gone[1].deleted and gone[1].id==4)
+    end)
+    __failures=failures
+end

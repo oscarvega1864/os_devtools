@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="select.css"><link rel="stylesheet" href="creator.css"></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="select.css"><link rel="stylesheet" href="creator.css"><link rel="stylesheet" href="business.css"></head>
 <body><div id="hud" class="hud hidden" aria-label="Información del personaje">
   <div class="cell id"><div class="label">ID</div><div id="playerId" class="value">--</div></div>
   <div class="separator"></div>
@@ -20,6 +20,11 @@
         <label>Nombre<input id="selFirst" maxlength="16" spellcheck="false" placeholder="Ana"></label>
         <label>Apellido<input id="selLast" maxlength="16" spellcheck="false" placeholder="López"></label>
       </div>
+      <div class="sel-mode" role="radiogroup" aria-label="Aspecto">
+        <label><input type="radio" name="selMode" value="design" checked> Crear normal (diseñar aspecto)</label>
+        <label><input type="radio" name="selMode" value="xml"> Importar XML (Menyoo)</label>
+      </div>
+      <textarea id="selXml" class="sel-xml hidden" spellcheck="false" placeholder="Pega aquí el XML de Menyoo (OutfitPedData). Lo que no traiga queda por defecto."></textarea>
       <div class="sel-create-foot"><span id="selAlias" class="sel-alias">alias: —</span>
         <div class="sel-create-actions"><button id="selCancel" type="button" class="btn ghost">Cancelar</button><button id="selCreateBtn" type="submit" class="btn">Crear</button></div>
       </div>
@@ -33,4 +38,6 @@
   </div>
 </section>
 <section id="creator" class="creator hidden" aria-label="Diseñador de personaje"></section>
-<script src="app.js"></script><script src="select.js"></script><script src="creator.js"></script></body></html>
+<section id="business" class="biz hidden" aria-label="Mis negocios"></section>
+<div id="businessInvite" class="biz-invite hidden" role="dialog"></div>
+<script src="app.js"></script><script src="select.js"></script><script src="creator.js"></script><script src="business.js"></script><script src="dealership.js"></script></body></html>

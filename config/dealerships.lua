@@ -1,0 +1,51 @@
+-- Concesionarios del servidor (valores de serie). Junto al mostrador, E abre el catalogo; se paga en efectivo o con
+-- tarjeta (lector). El vehiculo se registra fijo a nombre del comprador, con matricula aleatoria y su llave, y aparece en
+-- la entrega. Los administradores cambian precios, modelos y puntos en el juego con /concesionarios: esos cambios se
+-- guardan en data/dealerships.json y mandan sobre estos valores. Coordenadas aproximadas: muevelas desde el panel.
+OSDevtools = OSDevtools or {}
+local function c(model, label, price) return { model = model, label = label, price = price } end
+OSDevtools.Dealerships = {
+    pdm = { label = 'Premium Deluxe Motorsport', blip = { sprite = 326, color = 3, scale = 0.8 }, distance = 2.0, order = 1,
+        counter = { x = -56.79, y = -1098.85, z = 26.42 }, delivery = { x = -31.27, y = -1090.67, z = 26.42, h = 340.0 },
+        preview = { x = -45.4, y = -1096.6, z = 26.42, h = 120.0 }, -- escaparate (sin preview: punto de entrega)
+        colors = { 0, 1, 4, 27, 38, 55, 64, 88, 111, 112 },
+        catalog = { c('panto', 'Benefactor Panto', 9500), c('issi2', 'Weeny Issi', 12000), c('blista', 'Dinka Blista', 14500),
+            c('brioso', 'Grotti Brioso R/A', 15500), c('asea', 'Declasse Asea', 16000), c('premier', 'Declasse Premier', 18500),
+            c('stanier', 'Vapid Stanier', 21000), c('fugitive', 'Cheval Fugitive', 26000), c('tailgater', 'Obey Tailgater', 32000),
+            c('sultan', 'Karin Sultan', 38000), c('buffalo', 'Bravado Buffalo', 42000), c('oracle', 'Ubermacht Oracle', 44000),
+            c('dominator', 'Vapid Dominator', 52000), c('gauntlet', 'Bravado Gauntlet', 48000), c('baller', 'Gallivanter Baller', 62000),
+            c('granger', 'Declasse Granger', 50000), c('cavalcade', 'Albany Cavalcade', 47000), c('felon', 'Lampadati Felon', 55000) } },
+    luxury = { label = 'Luxury Autos', blip = { sprite = 523, color = 5, scale = 0.8 }, distance = 2.0, order = 2,
+        counter = { x = -795.2, y = -219.7, z = 37.08 }, delivery = { x = -773.6, y = -234.7, z = 37.08, h = 205.0 },
+        colors = { 0, 1, 4, 27, 38, 55, 64, 88, 111, 112, 159 },
+        catalog = { c('schafter2', 'Benefactor Schafter', 45000), c('exemplar', 'Dewbauchee Exemplar', 95000), c('carbonizzare', 'Grotti Carbonizzare', 155000),
+            c('comet2', 'Pfister Comet', 120000), c('elegy2', 'Annis Elegy RH8', 110000), c('jester', 'Dinka Jester', 165000),
+            c('massacro', 'Dewbauchee Massacro', 190000), c('zentorno', 'Pegassi Zentorno', 650000), c('adder', 'Truffade Adder', 900000),
+            c('t20', 'Progen T20', 1100000), c('cognoscenti', 'Enus Cognoscenti', 210000), c('windsor', 'Enus Windsor', 260000),
+            c('ztype', 'Truffade Z-Type (clasico)', 950000), c('stinger', 'Grotti Stinger (clasico)', 350000), c('jb700', 'Dewbauchee JB 700 (clasico)', 450000),
+            c('tornado', 'Declasse Tornado (clasico)', 28000), c('peyote', 'Vapid Peyote (clasico)', 33000) } },
+    sanders = { label = 'Sanders Motorcycles', blip = { sprite = 226, color = 4, scale = 0.8 }, distance = 2.0, order = 3,
+        counter = { x = 268.6, y = -1155.1, z = 29.29 }, delivery = { x = 263.4, y = -1162.4, z = 29.2, h = 90.0 },
+        colors = { 0, 1, 4, 27, 38, 55, 64, 88, 111 },
+        catalog = { c('bmx', 'BMX', 800), c('scorcher', 'Scorcher', 1500), c('faggio', 'Pegassi Faggio', 3500), c('sanchez', 'Maibatsu Sanchez', 9000),
+            c('pcj', 'Shitzu PCJ 600', 12000), c('akuma', 'Dinka Akuma', 22000), c('bati', 'Pegassi Bati 801', 26000), c('daemon', 'Western Daemon', 24000),
+            c('hexer', 'LCC Hexer', 21000), c('blazer', 'Nagasaki Blazer (quad)', 15000) } },
+    larrys = { label = "Larry's RV Sales", blip = { sprite = 67, color = 31, scale = 0.8 }, distance = 2.0, order = 4,
+        counter = { x = 1224.6, y = 2728.0, z = 38.0 }, delivery = { x = 1236.5, y = 2710.3, z = 38.0, h = 180.0 },
+        colors = { 0, 1, 4, 27, 55, 64, 88, 111 },
+        catalog = { c('bison', 'Bravado Bison', 30000), c('rumpo', 'Bravado Rumpo', 28000), c('speedo', 'Vapid Speedo', 26000), c('burrito3', 'Declasse Burrito', 27000),
+            c('youga', 'Bravado Youga', 25000), c('journey', 'Zirconium Journey (caravana)', 32000), c('camper', 'Brute Camper', 45000),
+            c('sadler', 'Vapid Sadler', 29000), c('bobcatxl', 'Vapid Bobcat XL', 26000), c('rebel2', 'Karin Rebel', 22000),
+            c('mesa', 'Canis Mesa', 34000), c('sandking', 'Vapid Sandking XL', 56000), c('dubsta', 'Benefactor Dubsta', 75000) } },
+    marina = { label = 'Puerta del Sol Marina', blip = { sprite = 410, color = 3, scale = 0.8 }, distance = 2.0, order = 5,
+        counter = { x = -794.5, y = -1510.8, z = 1.6 }, delivery = { x = -807.5, y = -1503.0, z = 0.1, h = 110.0 },
+        colors = { 0, 1, 111, 27, 64 },
+        catalog = { c('seashark', 'Speedophile Seashark', 18000), c('dinghy', 'Nagasaki Dinghy', 40000), c('jetmax', 'Shitzu Jetmax', 85000),
+            c('squalo', 'Shitzu Squalo', 70000), c('suntrap', 'Shitzu Suntrap', 55000), c('toro', 'Lampadati Toro', 140000), c('marquis', 'Dinka Marquis', 210000) } },
+    elitas = { label = 'Elitas Travel', blip = { sprite = 90, color = 3, scale = 0.8 }, distance = 2.0, order = 6,
+        counter = { x = -941.0, y = -2954.9, z = 13.95 }, delivery = { x = -978.6, y = -2995.3, z = 13.95, h = 60.0 },
+        colors = { 0, 1, 111, 27 },
+        catalog = { c('frogger', 'Maibatsu Frogger', 650000), c('maverick', 'Buckingham Maverick', 550000), c('supervolito', 'Buckingham SuperVolito', 900000),
+            c('swift', 'Buckingham Swift', 1100000), c('cuban800', 'Western Cuban 800', 450000), c('duster', 'Western Duster', 300000),
+            c('mammatus', 'Jobuilt Mammatus', 520000), c('velum', 'JoBuilt Velum', 680000), c('luxor', 'Buckingham Luxor', 1600000) } },
+}

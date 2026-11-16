@@ -15,11 +15,17 @@ OSDevtools.AuthorizationConfig = {
         ['osdev.jobs'] = { parent = 'osdev.admin' }, ['osdev.assets'] = { parent = 'osdev.admin' },
         ['osdev.inspect'] = { parent = 'osdev.admin' },
         ['osdev.identity'] = { parent = 'osdev.admin' },
+        -- Subpermisos de bienes (staff de os_admin): quien tiene osdev.assets los tiene todos.
+        ['osdev.assets.properties'] = { parent = 'osdev.assets' }, ['osdev.assets.businesses'] = { parent = 'osdev.assets' },
+        ['osdev.assets.factions'] = { parent = 'osdev.assets' }, ['osdev.assets.vehicles'] = { parent = 'osdev.assets' },
+        ['osdev.assets.dealers'] = { parent = 'osdev.assets' },
         ['ossecurity.admin'] = {}, ['osinventory.admin'] = {}
     },
     Consumers = {
         os_devtools = { ['osdev.admin']=true, ['osdev.economy']=true, ['osdev.jobs']=true,
-            ['osdev.assets']=true, ['osdev.inspect']=true, ['osdev.identity']=true },
+            ['osdev.assets']=true, ['osdev.inspect']=true, ['osdev.identity']=true,
+            ['osdev.assets.properties']=true, ['osdev.assets.businesses']=true, ['osdev.assets.factions']=true,
+            ['osdev.assets.vehicles']=true, ['osdev.assets.dealers']=true },
         os_security = { ['ossecurity.admin']=true },
         os_inventory = { ['osinventory.admin']=true }
     },

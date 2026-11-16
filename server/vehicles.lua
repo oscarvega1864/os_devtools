@@ -13,7 +13,8 @@ function OSDevtools.Vehicles.new(options)
     function vehicles.onesync() return GetConvar('onesync','off')~='off' end
     local function plateOf(entity) return ((GetVehicleNumberPlateText(entity) or ''):gsub('%s+$','')) end
     local function look(id,record)
-        return {id=id,plate=record.plate,primary=record.primary,secondary=record.secondary,livery=record.livery,liveryType=record.liveryType}
+        return {id=id,plate=record.plate,primary=record.primary,secondary=record.secondary,livery=record.livery,liveryType=record.liveryType,
+            classic=OSDevtools.IsClassicVehicle and OSDevtools.IsClassicVehicle(record.model) or nil} -- clasico: llave fisica, sin lector
     end
 
     -- Entidad viva de un registro: primero la conocida, despues cualquiera con su marca o matricula.

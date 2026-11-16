@@ -49,7 +49,9 @@ end
 local function set(list) local result = {}; for _, name in ipairs(list) do result[name] = true end; return result end
 
 OSDevtools.WeaponsConfig = {
-    Enabled = true,
+    -- Apagado desde os_inventory 0.2.0: las armas son objetos del inventario. Las guardadas se pasan solas al
+    -- inventario la primera vez que el personaje entra (ClearCharacterWeapons las borra de aqui).
+    Enabled = false,
     LoseOnDeath = false, -- true: al morir el personaje pierde las armas guardadas
     CheckMilliseconds = 3000, -- cada cuanto el cliente comprueba si han cambiado (solo envia si cambian)
     MinSaveMilliseconds = 1500, -- intervalo minimo entre guardados del mismo jugador

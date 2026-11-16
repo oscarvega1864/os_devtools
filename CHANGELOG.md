@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.1.8 — Llaves, menú de negocio y ficha del personaje
+
+- **Trabajos públicos** (`config/jobs.lua`): LSPD, BCSO, FIB, Bomberos y EMS no son negocios. Rangos fijos, sueldo por
+  rango que paga el ayuntamiento por hora de servicio, puntos de servicio en sus sedes (E) y `/trabajo` para que los
+  mandos contraten, asciendan y despidan por debajo de su rango. `/puntotrabajo` (admin) añade sedes. `/setjob` valida
+  los rangos de estos trabajos.
+- **Concesionarios**: PDM (coches normales), Luxury Autos (deportivos, lujo y clásicos), Sanders (motos y bicis), Larry's RV
+  (furgonetas, pickups, todoterreno, caravanas), Puerta del Sol (barcos) y Elitás (helicópteros y avionetas).
+  `/concesionarios` (admin): precios, añadir o quitar modelos y mover mostrador y entrega (`data/dealerships.json`).
+- **Concesionarios** (`config/dealerships.lua`): catálogo, color, pago en efectivo o con tarjeta (lector); el coche sale
+  a tu nombre con matrícula y llave en la entrega. Tipos de negocio **policía** y **facción** (sin blip).
+- Con **os_life** arrancado, al morir no se reaparece solo (exports `ReviveCharacter` y `RespawnAtHospital`).
+- **Llaves como objetos de os_inventory**: para entrar hace falta llevar la llave, también al titular. Al asignar
+  (`/setpropiedad`, `/setnegocio`, `/setvehiculo`), crear un vehículo con titular o cederlo, la cerradura cambia y el
+  nuevo titular recibe su llave. `/darllaveprop`, `/darllaveh` y `/darllavenegocio <id> <jugador>` dan una **copia**;
+  `/quitarllaveprop|h|negocio <id>` **cambia la cerradura** (las copias dejan de servir) y el titular recibe una nueva.
+  `/llave <propiedad|negocio|vehiculo> <id> <jugador>` (admin) para llaves perdidas. `HasAssetAccess` = llevar la llave.
+- Vehículos **clásicos** (`config/classic_vehicles.lua`, deportivos clásicos y modelos antiguos) llevan **llave física**;
+  el resto, llave-tarjeta. El state bag `osdev` lleva `classic` para que el cliente no pida pasar la tarjeta.
+- `/negocio`: menú del titular con sus negocios. Rangos (de menor a mayor, se ordenan y borran), plantilla (cambiar
+  rango o despedir) y **contratar** a un jugador cercano, que recibe la oferta y la acepta o rechaza. Al aceptar pasa a
+  tener el job y el rango del negocio; al despedirlo lo pierde.
+- **Sueldo por rango** en `/negocio`: cada hora conectado (`Business.PayMinutes` = 60) con el job del negocio, el empleado
+  cobra el sueldo de su rango del banco del titular (tope `MaxSalary`). Sin saldo no se paga y se avisa a los dos.
+- **Puntos de servicio**: el titular pone el de su negocio en `/negocio`. Allí, con E, la plantilla (y el titular) entra o
+  sale de servicio; al desconectarse sale de servicio. La nómina por hora **solo cuenta de servicio**.
+- Para contratar, el negocio necesita **job** (`/crearnegocio <tipo> <nombre> <precio> job=<job>` o `/negociojob
+  <id> <job>`) y al menos `Business.MinRanks` rangos (2 por defecto).
+- Exports `GetCharacterStats(src)` (ficha para `/stats` de os_hud), `HasAssetAccess(src, categoria, id)` y
+  `GetCharacterName(src)`, solo para recursos de `IdentityReaders`.
+- Armas por personaje (`WeaponsConfig.Enabled`) **apagado**: las armas son objetos de os_inventory 0.2.0. Export
+  `ClearCharacterWeapons(src)` (solo os_inventory) borra las guardadas tras pasarlas al inventario. `os_inventory`
+  autorizado en `Payers` y `Chargers` para la tienda Ammu-Nation.
+- Creación de personaje: elegir **crear normal** o **importar XML de Menyoo** (pegado en el selector); lo que el XML no
+  traiga queda por defecto.
+- **Matrículas aleatorias** de EE. UU. al crear vehículos fijos o temporales: 1 cifra, 3 letras y 3 cifras, como las de
+  California / San Andreas (p. ej. `8KDR472`), sin I, O ni Q y sin repetir. Las ya creadas conservan la suya. `ListAssets('vehicles')` disponible para os_security.
+- El chat muestra el nombre del personaje ("Oscar Vega") como autor de los mensajes.
+
 ## 0.1.7 — Lector os_emotes
 
 - `os_emotes` puede leer el personaje activo (`IdentityReaders`) para guardar el andar y la expresión de cada personaje.

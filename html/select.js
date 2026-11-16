@@ -82,7 +82,7 @@
   }
   function toggleCreate(on){
     creating=on;create.classList.toggle('hidden',!on);
-    if(on){first.value='';last.value='';updateAlias();setMessage('');setTimeout(()=>first.focus(),30);}
+    if(on){first.value='';last.value='';$('selXml').value='';document.querySelector('input[name=selMode][value=design]').checked=true;$('selXml').classList.add('hidden');updateAlias();setMessage('');setTimeout(()=>first.focus(),30);}
     refreshButtons();
   }
   function updateAlias(){
@@ -95,11 +95,15 @@
   $('selCancel').addEventListener('click',()=>toggleCreate(false));
   closeBtn.addEventListener('click',()=>post('selectClose'));
   first.addEventListener('input',updateAlias);last.addEventListener('input',updateAlias);
+  document.querySelectorAll('input[name=selMode]').forEach(r=>r.addEventListener('change',()=>{$('selXml').classList.toggle('hidden',r.value!=='xml'||!r.checked);}));
   create.addEventListener('submit',e=>{
     e.preventDefault();
     const a=clean(first.value),b=clean(last.value);
     if(a.length<2||b.length<2||a.length>16||b.length>16){setMessage('Nombre y apellido: de 2 a 16 letras cada uno.','error');return;}
-    setBusy(true);setMessage('Creando personaje…');post('createCharacter',{first:a,last:b});
+    const xmlMode=document.querySelector('input[name=selMode]:checked')?.value==='xml';const xml=$('selXml').value.trim();
+    if(xmlMode&&!xml.includes('<OutfitPedData')){setMessage('Pega un XML de Menyoo (debe contener OutfitPedData).','error');return;}
+    if(xml.length>65536){setMessage('El XML es demasiado grande.','error');return;}
+    setBusy(true);setMessage(xmlMode?'Creando personaje con el XML…':'Creando personaje…');post('createCharacter',xmlMode?{first:a,last:b,xml}:{first:a,last:b});
   });
   window.addEventListener('keydown',e=>{
     if(!state.open)return;

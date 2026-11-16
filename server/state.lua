@@ -138,11 +138,34 @@ local function base(data)
                 or (record.owner ~= nil and (type(record.owner) ~= 'string' or not data.characters[record.owner])) then return nil,'ID o titularidad de bien invalido.' end
             highest = math.max(highest,number)
             if record.position and not domain.position(record.position,false) then return nil,'Posicion de bien invalida.' end
+            if category == 'businesses' then
+                if record.job ~= nil and not u.text(record.job,40) then return nil,'Job de negocio invalido.' end
+                if record.dutyPoint ~= nil and not (u.object(record.dutyPoint) and type(record.dutyPoint.x)=='number' and type(record.dutyPoint.y)=='number' and type(record.dutyPoint.z)=='number') then return nil,'Punto de servicio invalido.' end
+                if record.salaries ~= nil then
+                    if not u.object(record.salaries) then return nil,'Sueldos de negocio invalidos.' end
+                    for rank,amount in pairs(record.salaries) do if not u.text(rank,20) or not u.integer(amount,0,1000000) then return nil,'Sueldos de negocio invalidos.' end end
+                end
+                if record.ranks ~= nil then
+                    if not u.array(record.ranks,20) then return nil,'Rangos de negocio invalidos.' end
+                    for _,rank in ipairs(record.ranks) do if not u.text(rank,20) then return nil,'Rangos de negocio invalidos.' end end
+                end
+            end
+            if record.lockVersion ~= nil and not u.integer(record.lockVersion,1,1000000000) then return nil,'Version de cerradura invalida.' end
+            -- Prestamos (vehiculos/propiedades) y plantilla (negocios): mapas alias -> true / puesto.
+            for _,field in ipairs({'lent','staff'}) do
+                if record[field] ~= nil then
+                    if not u.object(record[field]) then return nil,'Prestamos o plantilla invalidos.' end
+                    for alias,value in pairs(record[field]) do
+                        if not data.characters[alias] or (field=='lent' and value~=true) or (field=='staff' and not u.text(value,40)) then return nil,'Prestamos o plantilla invalidos.' end
+                    end
+                end
+            end
             if category == 'vehicles' then
                 if not u.text(record.model,50) or not u.integer(record.primary,0,159) or not u.integer(record.secondary,0,159)
                     or type(record.fixed) ~= 'boolean' or not u.text(record.plate,16)
                     or (record.livery ~= nil and not u.integer(record.livery,0,255))
-                    or (record.vtype ~= nil and not domain.vehicleTypes[record.vtype]) then return nil,'Vehiculo invalido.' end
+                    or (record.vtype ~= nil and not domain.vehicleTypes[record.vtype])
+                    or (record.fleet ~= nil and not u.integer(record.fleet,1,2147483646)) then return nil,'Vehiculo invalido.' end
             elseif category == 'properties' then
                 -- Sintaxis actual: solo numero y precio. Tipo/nombre de propiedades antiguas se conservan.
                 if not u.integer(record.price,0,2147483647) or (record.type ~= nil and not u.text(record.type,40))

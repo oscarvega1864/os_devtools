@@ -1,6 +1,6 @@
 local total,failures=0,0
 local function test(name,run) total=total+1;local ok,err=pcall(run);if not ok then failures=failures+1 end;__report(name,ok,tostring(err)) end
-local scripts={'config/spawn.lua','config/business.lua','config/weapons.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
+local scripts={'config/spawn.lua','config/business.lua','config/weapons.lua','config/classic_vehicles.lua','config/dealerships.lua','config/jobs.lua','config/authorization.lua','config/core.lua','server/lib/util.lua',
     'server/storage/codec.lua','server/storage/resource_files.lua','server/storage/json.lua','server/state.lua','server/appearance_xml.lua','server/storage.lua','server/core.lua',
     'server/auth_identity.lua','server/authorization_hub.lua','server/auth_boot.lua','server/identity_commands.lua','server/admin_section.lua','server/vehicles.lua','server.lua'}
 local function legacy()

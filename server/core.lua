@@ -99,7 +99,7 @@ function OSDevtools.Core.new(options)
                 local id=d.nextCharacter;alias=('auto_%010d'):format(id)
                 while d.characters[alias] do alias=alias..'_x' end
                 if not domain.alias(alias) then return false,'No hay alias automatico disponible.' end
-                d.characters[alias]={id=('oschar_%010d'):format(id),account=account,cash=0,bank=0,job='unemployed',rank='-',duty=false,life='alive',deaths={},nextDeath=1}
+                d.characters[alias]={id=('oschar_%010d'):format(id),account=account,cash=0,bank=0,job='unemployed',rank='-',duty=false,life='alive',deaths={},nextDeath=1,appearance=appearance}
                 d.nextCharacter=id+1
             end
             d.bindings[account]=alias;return true
@@ -194,7 +194,7 @@ function OSDevtools.Core.new(options)
             return true
         end)
     end
-    function core.createCharacter(actor,target,alias)
+    function core.createCharacter(actor,target,alias,appearance)
         local account,err=core.account(target);if not account then return false,err end
         if not domain.alias(alias) then return false,'Alias invalido.' end
         for name in pairs(state.characters) do if name:lower()==alias:lower() then return false,'Alias duplicado.' end end
@@ -238,6 +238,13 @@ function OSDevtools.Core.new(options)
         if not domain.position(point,false) or not config.AllowedBuckets[point.bucket] then point=config.DefaultSpawn end
         if not domain.position(point,false) or not config.AllowedBuckets[point.bucket] then return nil,'Spawn configurado invalido.' end
         return u.copy(point),c.id
+    end
+    -- Reanimado en el sitio (sistema de heridos): vuelve a estar vivo sin reaparecer.
+    function core.revive(source)
+        local alias=core.ensure(source);local c=alias and state.characters[alias]
+        if not c then return false,'no_character' end
+        if c.life~='dead' then return true end
+        return core.change(source,'revive '..c.id,function(d) d.characters[alias].life='alive';return true end)
     end
     function core.requestSpawn(source,reason,fallback)
         if OSDevtools.SpawnConfig.Mode~='spawnmanager' then return false,'external_spawn_owner' end
@@ -306,6 +313,8 @@ function OSDevtools.Core.new(options)
                 if #record.deaths>config.MaxDeaths then table.remove(record.deaths,1) end
                 return true
             end)
+            -- Con un sistema de heridos (options.downed, p. ej. os_life) no se reaparece solo: decide ese recurso.
+            if saved and options.downed and options.downed() then return saved end
             if saved then options.schedule(config.RespawnMilliseconds,function()
                 local current=core.ensure(source)
                 if current==alias and state.characters[alias].life=='dead' then core.requestSpawn(source,'death') end
@@ -446,7 +455,8 @@ function OSDevtools.Core.new(options)
         return true,alias
     end
     -- Alta de un personaje propio: nombre y apellido (letras) forman el alias nombre_apellido.
-    function core.createOwn(source,first,last)
+    -- appearance (opcional): aspecto importado (XML de Menyoo) ya validado; el personaje nace con el y sin disenador.
+    function core.createOwn(source,first,last,appearance)
         local settings=config.CharacterSelect or {}
         if not settings.AllowCreate then return false,'La creacion de personajes esta desactivada.' end
         local function part(value) return type(value)=='string' and #value>=2 and #value<=16 and value:match('^[A-Za-z]+$') and value:lower() or nil end
@@ -458,7 +468,8 @@ function OSDevtools.Core.new(options)
         local now=options.clock()
         if createdAt[source] and now>=createdAt[source] and now-createdAt[source]<(settings.CreateCooldownMilliseconds or 0) then return false,'Espera unos segundos antes de crear otro personaje.' end
         local alias=first..'_'..last
-        local ok,why=core.createCharacter(source,source,alias)
+        if appearance~=nil then appearance=domain.normalizeAppearance(appearance);if not appearance then return false,'Aspecto del XML no valido.' end end
+        local ok,why=core.createCharacter(source,source,alias,appearance)
         if not ok then return false,why end
         createdAt[source]=now
         -- Se entra directamente con el personaje nuevo (y su disenador). Una cuenta sin personaje

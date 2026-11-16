@@ -106,7 +106,10 @@ end)
 RegisterNUICallback('createCharacter',function(data,cb)
     cb({})
     if not view.open or type(data)~='table' then return end
-    TriggerServerEvent('osdev:createOwnCharacter',tostring(data.first or ''),tostring(data.last or ''))
+    local xml=type(data.xml)=='string' and #data.xml<=65536 and data.xml or nil
+    -- Con XML se usa un evento latente (va en trozos): un XML de Menyoo puede pasar de varios KB.
+    if xml then TriggerLatentServerEvent('osdev:createOwnCharacter',50000,tostring(data.first or ''),tostring(data.last or ''),xml)
+    else TriggerServerEvent('osdev:createOwnCharacter',tostring(data.first or ''),tostring(data.last or '')) end
 end)
 RegisterNUICallback('selectClose',function(_,cb)
     cb({})

@@ -8,7 +8,9 @@ OSDevtools.BusinessTypes={
     seguridad={label='Seguridad',sprite=67,color=3},     -- radar_security_van
     medico={label='Medico',sprite=61,color=1},           -- radar_hospital
     restaurante={label='Restaurante',sprite=93,color=17},-- radar_bar en naranja
-    compraventa={label='Compraventa',sprite=628,color=0} -- radar_bat_cash_reg
+    compraventa={label='Compraventa',sprite=628,color=0}, -- radar_bat_cash_reg
+    -- Facciones (bandas, organizaciones): mismo menu /negocio (rangos, miembros, punto de servicio), sin blip.
+    faccion={label='Faccion',hidden=true}
 }
 OSDevtools.BusinessBlipScale=0.8
 -- Blips de propiedades (/crearpropiedad): radar_safehouse; verde a la venta, azul con propietario.

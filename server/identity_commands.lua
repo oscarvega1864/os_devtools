@@ -139,12 +139,19 @@ function OSDevtools.bindCore(options)
         selectResult(player,ok,ok and nil or err)
         if ok then reply(player,'Ahora juegas como '..label('alias:'..alias)..'.','success') end
     end)
-    RegisterNetEvent('osdev:createOwnCharacter',function(first,last)
+    RegisterNetEvent('osdev:createOwnCharacter',function(first,last,xml)
         local player=source
         if not OSDevtools.Util.integer(player,1,2147483647) then return end
         if not core.isSelecting(player) and not core.hasSpawned(player) then return end
         if throttled(player) then return selectResult(player,false,'Demasiado rapido; vuelve a intentarlo.') end
-        local ok,result,switchError=core.createOwn(player,first,last)
+        -- Opcional: XML de Menyoo pegado en el selector. Lo que el XML no trae queda por defecto.
+        local appearance
+        if xml~=nil and xml~='' then
+            if type(xml)~='string' or #xml>65536 then return selectResult(player,false,'XML demasiado grande o no valido.') end
+            local detail;appearance,detail=OSDevtools.AppearanceXml.parse(xml)
+            if not appearance then return selectResult(player,false,detail or 'XML no valido.') end
+        end
+        local ok,result,switchError=core.createOwn(player,first,last,appearance)
         if not ok then return selectResult(player,false,result) end
         if switchError then -- creado, pero no se pudo entrar con el: se muestra en la lista
             return sendRoster(player,core.isSelecting(player) and 'connect' or 'switch','Personaje '..result..' creado; no se pudo entrar con el: '..switchError)
@@ -226,6 +233,12 @@ function OSDevtools.bindCore(options)
     exports('ResolveCharacter',function(value) if not reader() then return nil,'resource_not_authorized' end;return core.find(value) end)
     -- Armas guardadas del personaje activo (nombres y municion), para lectores autorizados (p. ej. el arco de os_security).
     exports('GetCharacterWeapons',function(player) if not reader() then return nil,'resource_not_authorized' end;return core.weapons(player) end)
+    -- Tras pasar las armas guardadas a objetos (os_inventory), se borran de la ficha para no darlas dos veces.
+    exports('ClearCharacterWeapons',function(player)
+        if GetInvokingResource()~='os_inventory' then return false,'resource_not_authorized' end
+        local alias=core.lookup(player);if not alias then return false,'no_character' end
+        return core.change(player,'clear weapons '..alias,function(d) d.characters[alias].weapons=nil;return true end)
+    end)
     exports('GetIdentityStatus',function() return {ready=core.status(),version='0.1.6',provider='os_devtools'} end)
     -- Ingreso de un recurso de trabajo autorizado (Payers) al personaje activo; queda en la auditoria.
     exports('PayCharacter',function(player,amount,account,reason)

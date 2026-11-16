@@ -99,12 +99,32 @@ local function assetLabel(category,id,record)
   end
   return record.model or record.name or record.type or '?'
 end
+-- Matricula aleatoria al estilo de EE. UU. (San Andreas / California): 1 cifra, 3 letras y 3 cifras (p. ej. 8KDR472),
+-- sin I, O ni Q para no confundirlas con numeros. Nunca repite una existente.
+local PLATE_LETTERS='ABCDEFGHJKLMNPRSTUVWXYZ'
+local function randomPlate(d)
+  local used={}
+  for _,v in pairs(d.vehicles) do if v.plate then used[v.plate]=true end end
+  local function letters() local t='';for _=1,3 do local i=math.random(1,#PLATE_LETTERS);t=t..PLATE_LETTERS:sub(i,i) end;return t end
+  for _=1,200 do
+    local plate=('%d%s%03d'):format(math.random(1,9),letters(),math.random(0,999))
+    if not used[plate] then return plate end
+  end
+  return ('%d%s%03d'):format(math.random(1,9),letters(),math.random(0,999))
+end
 local function needAdmin(src,permission)
   permission=permission or 'osdev.admin'
   if not ready then out(src,'Registro no disponible; revisar almacenamiento.','error');return false end
   if admin(src,permission) then return true end
   OSDevtools.AuthDenied(src,permission)
   out(src,'Sin autorizacion efectiva '..permission..'. Consulta /ospermisos.','error');return false
+end
+-- Subpermiso de bienes segun la categoria (las facciones son negocios de tipo faccion).
+local function assetPerm(category,id)
+  if category=='properties' then return 'osdev.assets.properties' end
+  if category=='vehicles' then return 'osdev.assets.vehicles' end
+  local b=id and state.businesses[tostring(id)]
+  return (b and b.type=='faccion') and 'osdev.assets.factions' or 'osdev.assets.businesses'
 end
 local function exists(src)
   local alias=characterFor(src)
@@ -252,7 +272,11 @@ RegisterCommand('setjob',function(src,args)
   if not needAdmin(src,'osdev.jobs') then return end
   local who=resolve(args[1]);local job=args[2];local rank=args[3] or 'empleado'
   if not who or not validAlias(job) or not validAlias(rank) then return out(src,'Uso: /setjob <idJugador|alias> <job> <rango>') end
-  if action(src,'setjob',function(d) local c=d.characters[who];c.job=job;c.rank=rank;c.duty=false;return true end) then out(src,'Job actualizado: '..who..' -> '..job..'/'..rank,'success') end
+  local public=OSDevtools.PublicJobs[job]
+  if public then local ok=false;for _,r in ipairs(public.ranks) do if r==rank then ok=true end end
+    if not ok then return out(src,('Rangos de %s: %s'):format(public.label,table.concat(public.ranks,', '))) end end
+  if action(src,'setjob',function(d) local c=d.characters[who];c.job=job;c.rank=rank;c.duty=false;return true end) then out(src,'Job actualizado: '..who..' -> '..job..'/'..rank,'success')
+    for _,p in ipairs(GetPlayers()) do if characterFor(tonumber(p))==who and OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(tonumber(p)) end end end
 end,false)
 RegisterCommand('setduty',function(src,args)
   if not needAdmin(src,'osdev.jobs') then return end
@@ -272,7 +296,7 @@ local blipSignature=nil
 local function businessBlips()
   local list={}
   for id,b in pairs(state.businesses) do
-    if b.position and OSDevtools.BusinessTypes[b.type] then
+    if b.position and OSDevtools.BusinessTypes[b.type] and not OSDevtools.BusinessTypes[b.type].hidden then
       list[#list+1]={id=tonumber(id),type=b.type,name=b.name,x=b.position.x,y=b.position.y,z=b.position.z}
     end
   end
@@ -369,7 +393,7 @@ end,false)
 
 -- /crearpropiedad <numero> <precio>: ID elegido por el administrador, sin nombre, tipo ni titular.
 RegisterCommand('crearpropiedad',function(src,args)
-  if not needAdmin(src,'osdev.assets') then return end
+  if not needAdmin(src,'osdev.assets.properties') then return end
   local id=positive(args[1]);local price=money(args[2])
   if #args~=2 or not id or id>2147483646 or price==nil then return out(src,'Uso: /crearpropiedad <numero> <precio>. Ejemplo: /crearpropiedad 200 50000') end
   if state.properties[tostring(id)] then return out(src,'La propiedad ID '..id..' ya existe.','error') end
@@ -382,9 +406,11 @@ RegisterCommand('crearpropiedad',function(src,args)
 end,false)
 -- /crearnegocio <tipo> <nombre> <precio>: ID automatico, sin titular, blip segun la categoria.
 RegisterCommand('crearnegocio',function(src,args)
-  if not needAdmin(src,'osdev.assets') then return end
+  if not needAdmin(src,(args[1] or ''):lower()=='faccion' and 'osdev.assets.factions' or 'osdev.assets.businesses') then return end
   local types={};for key in pairs(OSDevtools.BusinessTypes) do types[#types+1]=key end;table.sort(types)
-  local usage='Uso: /crearnegocio <tipo> <nombre> <precio>. Tipos: '..table.concat(types,', ')..'. Ejemplo: /crearnegocio ltd LTD_Mirror 30000'
+  local usage='Uso: /crearnegocio <tipo> <nombre> <precio> [job=<job>]. Tipos: '..table.concat(types,', ')..'. Ejemplo: /crearnegocio ltd LTD_Mirror 30000 job=ltd'
+  local job
+  if args[#args] and args[#args]:lower():match('^job=') then job=args[#args]:sub(5):lower();table.remove(args);if not validAlias(job) then return out(src,'Job no valido.') end end
   local kind=args[1] and args[1]:lower();local price=#args>=3 and money(args[#args]) or nil;local name=#args>=3 and businessName(args) or nil
   if not kind or not OSDevtools.BusinessTypes[kind] or price==nil or not name then return out(src,usage) end
   local pos=getCoords(src);if not pos then return out(src,'Debes ejecutar este comando dentro del juego, en un bucket permitido.') end
@@ -392,18 +418,23 @@ RegisterCommand('crearnegocio',function(src,args)
   if action(src,'create business '..kind,function(d)
     id=d.nextBusiness;d.nextBusiness=id+1
     if d.businesses[tostring(id)] then return false,'ERROR: El ID '..id..' ya existe.' end
-    d.businesses[tostring(id)]={id=id,type=kind,name=name,price=price,position=pos}
+    d.businesses[tostring(id)]={id=id,type=kind,name=name,price=price,position=pos,job=job}
     return true
-  end) then out(src,('Negocio #%d "%s" (%s) creado en tus coordenadas por $%d. Sin propietario: /setnegocio %d <destinatario>.'):format(id,name,OSDevtools.BusinessTypes[kind].label,price,id),'success') end
+  end) then out(src,('Negocio #%d "%s" (%s) creado en tus coordenadas por $%d%s. Sin propietario: /setnegocio %d <destinatario>.'):format(id,name,OSDevtools.BusinessTypes[kind].label,price,job and (', job '..job) or ' (sin job: /negociojob)',id),'success') end
 end,false)
+local giveKeyItem -- se define en el bloque de llaves (mas abajo)
 local function assign(kind,src,args)
-  if not needAdmin(src,'osdev.assets') then return end
-  local id=positive(args[1]); local who=resolve(args[2])
+  local id=positive(args[1])
+  if not needAdmin(src,assetPerm(kind,id)) then return end
+  local who=resolve(args[2])
   if not id or not who then return out(src,'Uso: /set'..(kind=='vehicles' and 'vehiculo' or kind=='businesses' and 'negocio' or 'propiedad')..' <id> <idJugador|alias>') end
   if action(src,'assign '..kind,function(d)
     local obj=d[kind][tostring(id)];if not obj then return false,'No existe ese ID en esta categoria.' end
-    obj.owner=who;return true
-  end) then out(src,'Asignado '..kind..' #'..id..' a '..ownerLabel(who),'success') end
+    obj.owner=who;obj.lockVersion=(obj.lockVersion or 1)+1;obj.lent=nil;return true
+  end) then
+    local given=giveKeyItem(kind,id,who)
+    out(src,'Asignado '..kind..' #'..id..' a '..ownerLabel(who)..(given and ' (con su llave).' or ' (no se pudo entregar la llave: /llave).'),'success')
+  end
 end
 RegisterCommand('setpropiedad',function(src,args) assign('properties',src,args) end,false)
 RegisterCommand('setnegocio',function(src,args) assign('businesses',src,args) end,false)
@@ -426,7 +457,7 @@ for command,cat in pairs({listvehiculos='vehicles',listnegocios='businesses',lis
 end
 
 RegisterCommand('crearvehiculo',function(src,args)
-  if not needAdmin(src,'osdev.assets') then return end
+  if not needAdmin(src,'osdev.assets.vehicles') then return end
   local model=args[1]
   local primary=integer(args[2]);local secondary=integer(args[3])
   if not model or not model:match('^[%w_]+$') or #model>50 or primary==nil or primary>159 then
@@ -444,11 +475,12 @@ RegisterCommand('crearvehiculo',function(src,args)
     if not vtype then return out(src,'Modelo de vehiculo invalido o no disponible en tu cliente: '..model..'. No se registra nada.','error') end
     local id,plate
     if not action(src,'create vehicle',function(d)
-      id=d.nextVehicle;d.nextVehicle=id+1;plate=('OS%06d'):format(id)
+      id=d.nextVehicle;d.nextVehicle=id+1;plate=randomPlate(d)
       d.vehicles[tostring(id)]={id=id,model=model,primary=primary,secondary=secondary,fixed=(mode=='fijo'),owner=who,plate=plate,position=point,vtype=vtype}
       return true
     end) then return end
     local entity,err=vehicles.spawn(id,state.vehicles[tostring(id)],point)
+    if who then giveKeyItem('vehicles',id,who) end
     if entity then out(src,('Vehiculo #%d (%s, %s) creado delante de ti. Matricula %s.'):format(id,model,mode,plate),'success')
     else out(src,('Vehiculo #%d registrado, pero %s Reintenta con /recuperarvehiculo %d.'):format(id,err,id),'error') end
   end)
@@ -480,7 +512,7 @@ RegisterNetEvent('osdev:vehicleModelTypes',function(nonce,result) vehicles.inspe
 -- Al entrar un administrador se completan los tipos pendientes y se restauran esos vehiculos.
 RegisterNetEvent('osdev:vehiclesReady',function()
   local src=source
-  if src<=0 or not ready or #missingTypes==0 or not admin(src,'osdev.assets') then return end
+  if src<=0 or not ready or #missingTypes==0 or not admin(src,'osdev.assets.vehicles') then return end
   local ids=missingTypes;missingTypes={}
   completeTypes(src,ids,function()
     local created,missing=vehicles.restore()
@@ -489,7 +521,7 @@ RegisterNetEvent('osdev:vehiclesReady',function()
   end)
 end)
 RegisterCommand('recuperarvehiculo',function(src,args)
-  if not needAdmin(src,'osdev.assets') then return end
+  if not needAdmin(src,'osdev.assets.vehicles') then return end
   local id=positive(args[1]);local v=id and state.vehicles[tostring(id)]
   if not v then return out(src,'Uso: /recuperarvehiculo <idExistente>') end
   if vehicles.find(id,v) then return out(src,'El vehiculo #'..id..' ya existe en el mundo; no se duplica.','warning') end
@@ -508,7 +540,7 @@ RegisterCommand('recuperarvehiculo',function(src,args)
 end,false)
 RegisterNetEvent('osdev:vehicleAppearance',function(plate,primary,secondary,livery,liveryType)
   local src=source
-  if not needAdmin(src,'osdev.assets') then return end
+  if not needAdmin(src,'osdev.assets.vehicles') then return end
   local veh=GetVehiclePedIsIn(GetPlayerPed(src),false)
   if veh==0 or not DoesEntityExist(veh) or GetPedInVehicleSeat(veh,-1)~=GetPlayerPed(src) or GetVehicleNumberPlateText(veh):gsub('%s+$','')~=plate then return end
   local found
@@ -538,18 +570,134 @@ RegisterNetEvent('osdev:cederVehicle',function(target,plate)
   for id,v in pairs(state.vehicles) do if v.plate==plate then found=id;break end end
   if not found then return out(src,'Este vehiculo no esta registrado en os_devtools.','error') end
   if state.vehicles[found].owner~=from then return out(src,'No eres el propietario de este vehiculo.','error') end
-  if action(src,'ceder vehicle',function(d) d.vehicles[found].owner=to;return true end) then
+  if action(src,'ceder vehicle',function(d) local v=d.vehicles[found];v.owner=to;v.lent=nil;v.lockVersion=(v.lockVersion or 1)+1;return true end) then
+    giveKeyItem('vehicles',found,to)
     out(src,'Vehiculo #'..found..' cedido a '..to,'success')
     for _,id in ipairs(GetPlayers()) do if characterFor(tonumber(id))==to then out(tonumber(id),'Has recibido el vehiculo #'..found,'success') end end
   end
 end)
 for command,event in pairs({setcolor='osdev:doSetColor',setlivery='osdev:doSetLivery',listliveries='osdev:doListLiveries'}) do
   RegisterCommand(command,function(src,args)
-    if not needAdmin(src,'osdev.assets') then return end
+    if not needAdmin(src,'osdev.assets.vehicles') then return end
     if src==0 then return out(src,'Comando disponible solo dentro del juego.') end
     TriggerClientEvent(event,src,args)
   end,false)
 end
+
+-- Log en la web del panel (os_admin), si esta.
+local function panelLog(src,act,target,detail)
+  if GetResourceState('os_admin')=='started' then pcall(function() exports.os_admin:PanelLog(src,act,target or '',detail or '') end) end
+end
+-- /setcar <opcion> ...: gestion rapida de vehiculos para el staff. Sin vehiculo indicado se usa el tuyo (dentro).
+--   reparar [id|matricula]                    lo repara donde este (lo hace quien lo tiene cargado; si nadie, se recrea)
+--   livery <n> [native|mod48] [id|matricula]  cambia la livery; en vehiculos de os_devtools queda guardada
+--   gas <0-100> [id|matricula]                pone la gasolina (LegacyFuel si esta)
+--   negocio meter|sacar <idNegocio> [id|mat.] flota de un negocio: su dueno y su plantilla lo pueden usar sin llave
+--   faccion meter|sacar <idFaccion> [id|mat.] igual, para facciones
+-- Permisos: reparar y gas osadmin.vehicles; livery osdev.assets.vehicles; negocio/faccion ademas
+-- osdev.assets.businesses / osdev.assets.factions.
+local SETCAR_USAGE='Uso: /setcar reparar [id|matricula] | livery <n> [native|mod48] [id|matricula] | gas <0-100> [id|matricula] | negocio meter|sacar <id> [vehiculo] | faccion meter|sacar <id> [vehiculo]'
+local function plateText(entity) return ((GetVehicleNumberPlateText(entity) or ''):gsub('^%s+',''):gsub('%s+$',''):upper()) end
+local function recordByPlate(plate) for id,v in pairs(state.vehicles) do if (v.plate or ''):upper()==plate then return tonumber(id),v end end end
+-- Vehiculo objetivo: ID del registro, matricula o el que conduces. Devuelve entidad (puede ser nil), id y registro.
+local function setcarTarget(src,value)
+  if value==nil then
+    local ped=GetPlayerPed(src);local entity=ped and ped~=0 and GetVehiclePedIsIn(ped,false) or 0
+    if entity==0 then return nil,'Entra en el vehiculo o indica su ID o matricula.' end
+    local id,record=recordByPlate(plateText(entity));return entity,nil,id,record
+  end
+  local id=positive(value);local record=id and state.vehicles[tostring(id)]
+  if id and record then return vehicles.find(id,record),nil,id,record end
+  local plate=tostring(value):upper()
+  if not plate:match('^[%w ]+$') or #plate>8 then return nil,'Vehiculo no encontrado: '..tostring(value) end
+  for _,entity in ipairs(GetAllVehicles() or {}) do
+    if DoesEntityExist(entity) and plateText(entity)==plate then local rid,rec=recordByPlate(plate);return entity,nil,rid,rec end
+  end
+  local rid,rec=recordByPlate(plate)
+  if rid then return nil,nil,rid,rec end
+  return nil,'Vehiculo no encontrado: '..tostring(value)
+end
+local function ownerOf(entity)
+  local owner=entity and NetworkGetEntityOwner(entity)
+  return owner and owner>0 and GetPlayerName(owner) and owner or nil
+end
+local function staffAce(src,ace) return src==0 or IsPlayerAceAllowed(src,ace) end
+local setcar={}
+function setcar.reparar(src,args)
+  if not staffAce(src,'osadmin.vehicles.repair') then return out(src,'No tienes permiso.','error') end
+  local entity,err,id,record=setcarTarget(src,args[2]);if err then return out(src,err,'error') end
+  if not entity then return out(src,'El vehiculo #'..tostring(id)..' no esta en el mundo: sacalo con /recuperarvehiculo '..tostring(id)..'.','warning') end
+  local owner=ownerOf(entity)
+  if owner then
+    TriggerClientEvent('osdev:setcarEffect',owner,NetworkGetNetworkIdFromEntity(entity),'repair')
+  elseif id and record then
+    -- Nadie lo tiene cargado: se recrea en el mismo sitio (sale nuevo).
+    local p=GetEntityCoords(entity)
+    local point={x=p.x,y=p.y,z=p.z,h=GetEntityHeading(entity),bucket=GetEntityRoutingBucket(entity)}
+    vehicles.delete(id)
+    local ok,why=vehicles.spawn(id,record,point)
+    if not ok then return out(src,'No se pudo reparar: '..tostring(why),'error') end
+  else return out(src,'Nadie tiene ese vehiculo cargado; acercate a el y repite.','warning') end
+  out(src,'Vehiculo '..(id and ('#'..id) or plateText(entity))..' reparado.','success')
+  panelLog(src,'setcar reparar',id and tostring(id) or plateText(entity))
+end
+function setcar.gas(src,args)
+  if not staffAce(src,'osadmin.vehicles.fuel') then return out(src,'No tienes permiso.','error') end
+  local amount=integer(args[2]);if not amount or amount<0 or amount>100 then return out(src,'Uso: /setcar gas <0-100> [id|matricula]') end
+  local entity,err,id=setcarTarget(src,args[3]);if err then return out(src,err,'error') end
+  local owner=ownerOf(entity)
+  if not owner then return out(src,'Ese vehiculo no esta cargado por nadie; acercate a el y repite.','warning') end
+  TriggerClientEvent('osdev:setcarEffect',owner,NetworkGetNetworkIdFromEntity(entity),'fuel',amount)
+  out(src,('Gasolina al %d%%.'):format(amount),'success')
+  panelLog(src,'setcar gas',id and tostring(id) or plateText(entity),tostring(amount))
+end
+function setcar.livery(src,args)
+  if not needAdmin(src,'osdev.assets.vehicles') then return end
+  local index=integer(args[2]);if not index or index<0 or index>255 then return out(src,'Uso: /setcar livery <n> [native|mod48] [id|matricula]') end
+  local kind=(args[3]=='native' or args[3]=='mod48') and args[3] or nil
+  local entity,err=setcarTarget(src,kind and args[4] or args[3]);if err then return out(src,err,'error') end
+  if not entity then return out(src,'El vehiculo no esta en el mundo.','warning') end
+  if src==0 then return out(src,'La livery se elige dentro del juego (hay que mirar que tipos admite el modelo).') end
+  -- El tipo de livery solo lo sabe un cliente: lo comprueba quien da la orden y responde con osdev:setcarLivery.
+  TriggerClientEvent('osdev:setcarLiveryCheck',src,NetworkGetNetworkIdFromEntity(entity),index,kind)
+end
+RegisterNetEvent('osdev:setcarLivery',function(netId,index,kind)
+  local src=source
+  if not admin(src,'osdev.assets.vehicles') or not integer(index) or index<0 or index>255 or (kind~='native' and kind~='mod48') then return end
+  local entity=NetworkGetEntityFromNetworkId(tonumber(netId) or 0)
+  if not entity or entity==0 or not DoesEntityExist(entity) then return end
+  local id,record=recordByPlate(plateText(entity))
+  if id then
+    if not action(src,'setcar livery '..id,function(d) local v=d.vehicles[tostring(id)];v.livery=index;v.liveryType=kind;return true end) then return end
+    vehicles.refreshLook(id,state.vehicles[tostring(id)]) -- quien lo controla aplica el aspecto guardado
+  end
+  local owner=ownerOf(entity)
+  if owner then TriggerClientEvent('osdev:setcarEffect',owner,netId,'livery',{index=index,kind=kind}) end
+  out(src,('Livery %d (%s)%s.'):format(index,kind,id and ' guardada' or ''),'success')
+  panelLog(src,'setcar livery',id and tostring(id) or plateText(entity),tostring(index))
+end)
+-- Flota de un negocio o faccion.
+local function setcarFleet(src,args,faction)
+  if not needAdmin(src,'osdev.assets.vehicles') or not needAdmin(src,faction and 'osdev.assets.factions' or 'osdev.assets.businesses') then return end
+  local mode=(args[2] or ''):lower();local bid=positive(args[3])
+  local word=faction and 'faccion' or 'negocio'
+  if (mode~='meter' and mode~='sacar') or not bid then return out(src,('Uso: /setcar %s meter|sacar <id%s> [id|matricula del vehiculo]'):format(word,faction and 'Faccion' or 'Negocio')) end
+  local b=state.businesses[tostring(bid)]
+  if not b or (b.type=='faccion')~=faction then return out(src,('No existe %s #%d.'):format(faction and 'la faccion' or 'el negocio',bid),'error') end
+  local _,err,id,record=setcarTarget(src,args[4]);if err then return out(src,err,'error') end
+  if not id then return out(src,'Solo los vehiculos registrados (os_devtools) pueden ser de una flota.','warning') end
+  if mode=='sacar' and record.fleet~=bid then return out(src,('El vehiculo #%d no es de %s #%d.'):format(id,word,bid),'warning') end
+  if action(src,'setcar '..word..' '..mode..' '..id..' '..bid,function(d) d.vehicles[tostring(id)].fleet=mode=='meter' and bid or nil;return true end) then
+    out(src,('Vehiculo #%d %s %s #%d (%s).'):format(id,mode=='meter' and 'anadido a' or 'retirado de',word,bid,b.name or ''),'success')
+  end
+end
+function setcar.negocio(src,args) setcarFleet(src,args,false) end
+function setcar.faccion(src,args) setcarFleet(src,args,true) end
+RegisterCommand('setcar',function(src,args)
+  local handler=setcar[(args[1] or ''):lower()]
+  if not handler then return out(src,SETCAR_USAGE) end
+  handler(src,args)
+end,false)
 RegisterCommand('ceder',function(src,args)
   if src==0 then return end
   if not exists(src) then return end
@@ -569,8 +717,35 @@ CreateThread(function()
   end
 end)
 local storage,storageError=OSDevtools.openStorage(RESOURCE)
+-- Web del panel (via os_admin): bienes (altas, cambios, bajas) y auditoria de cambios, agrupados en 1 s.
+local panelLast,panelChars,panelMarker,panelQueued=nil,nil,nil,false
+local function panelSync()
+  panelQueued=false
+  if not ready or GetResourceState('os_admin')~='started' then return end
+  local changes,current=OSDevtools.PanelSync.diff(state,panelLast or {},assetLabel)
+  for _,p in ipairs(changes) do
+    local ok,accepted=pcall(function() return exports.os_admin:PanelTrack('asset',p) end)
+    if not ok or not accepted then return end -- web desactivada: se reintenta en el siguiente cambio
+  end
+  panelLast=current
+  local people,known=OSDevtools.PanelSync.characters(state,panelChars or {})
+  for _,p in ipairs(people) do
+    local ok,accepted=pcall(function() return exports.os_admin:PanelTrack('character',p) end)
+    if not ok or not accepted then return end
+  end
+  panelChars=known
+  local entries;entries,panelMarker=OSDevtools.PanelSync.newAudit(state.audit or {},panelMarker)
+  for _,e in ipairs(entries) do
+    local op=tostring(e.operation or '')
+    pcall(function() exports.os_admin:PanelLog(tostring(e.actor or 'sistema'),op:match('^(%S+)') or 'cambio',op:match('^%S+%s+(%S+)') or '',op) end)
+  end
+end
+local function queuePanelSync() if not panelQueued then panelQueued=true;SetTimeout(1000,panelSync) end end
+AddEventHandler('onResourceStart',function(name) if name=='os_admin' then panelLast=nil;panelChars=nil;SetTimeout(3000,queuePanelSync) end end)
 core=OSDevtools.Core.new({
   storage=storage,now=os.time,clock=GetGameTimer,connected=function(src) return GetPlayerName(src)~=nil end,
+  -- Sistema de heridos: con os_life arrancado, al morir no se reaparece solo (inconsciente, EMS u hospital).
+  downed=function() return GetResourceState('os_life')=='started' end,
   identifiers=GetPlayerIdentifiers,
   world=function(src)
     local ped=GetPlayerPed(src)
@@ -580,7 +755,7 @@ core=OSDevtools.Core.new({
     return {x=point.x,y=point.y,z=point.z,h=GetEntityHeading(ped),bucket=GetPlayerRoutingBucket(src)},GetEntityHealth(ped)
   end,
   schedule=SetTimeout,
-  publish=function(snapshot,status) state=snapshot;ready=status;pushAllHud();if ready then pushBlips() end end,
+  publish=function(snapshot,status) state=snapshot;ready=status;pushAllHud();if ready then pushBlips();queuePanelSync() end end,
   changed=function(src,dto)
     TriggerEvent('osdev:characterChanged',src,dto)
     if GetPlayerName(src) then TriggerClientEvent('osdev:characterChanged',src,dto) end
@@ -637,7 +812,7 @@ exports('GetBalance',function(alias,account)
 end)
 -- Lista de propiedades o negocios (copias), p. ej. para que os_security cierre sus puertas con llave.
 exports('ListAssets',function(category)
-  if not ready or not ({businesses=true,properties=true})[category] then return nil end
+  if not ready or not ({businesses=true,properties=true,vehicles=true})[category] then return nil end
   local result={}
   for _,asset in pairs(state[category] or {}) do result[#result+1]=clone(asset) end
   table.sort(result,function(a,b) return a.id<b.id end)
@@ -648,3 +823,674 @@ exports('GetAsset',function(category,id)
   local d=state[category]
   return d and clone(d[tostring(id)]) or nil
 end)
+
+
+-- Llaves ---------------------------------------------------------------------------------------------------------
+-- Las llaves son objetos de os_inventory: "llave" (propiedades y negocios) y "llave-tarjeta" (vehiculos). Cada una abre
+-- la version actual de la cerradura del bien (record.lockVersion). Para entrar hace falta llevarla, tambien al titular.
+-- El titular recibe una al asignarse o crearse el bien; /darllave... crea copias para otros; /quitarllave... cambia la
+-- cerradura (las copias dejan de servir) y el titular recibe una llave nueva.
+local KEY_ITEM={properties='llave',businesses='llave',vehicles='llave_vehiculo'}
+local KEY_KIND={properties='property',businesses='business',vehicles='vehicle'}
+local KEY_CATEGORY={prop='properties',propiedad='properties',negocio='businesses',vehiculo='vehicles',h='vehicles'}
+-- Vehiculos clasicos (config/classic_vehicles.lua): llave fisica; el resto, llave-tarjeta.
+local function keyItem(category,r) if category=='vehicles' and OSDevtools.IsClassicVehicle(r.model) then return 'llave' end;return KEY_ITEM[category] end
+local function keyLabel(category,id,r)
+  if category=='vehicles' then return ('%s · %s %s'):format(OSDevtools.IsClassicVehicle(r.model) and 'Llave' or 'Llave-tarjeta',r.model or 'vehiculo',r.plate or '') end
+  if category=='businesses' then return 'Llave · '..(r.name or ('Negocio #'..id)) end
+  return 'Llave · Propiedad #'..id
+end
+function giveKeyItem(category,id,alias)
+  local r=state[category][tostring(id)];local c=alias and state.characters[alias]
+  if not r or not c then return false,'Bien o personaje no encontrado.' end
+  if GetResourceState('os_inventory')~='started' then return false,'Inventario no disponible.' end
+  local meta={kind=KEY_KIND[category],target=tostring(id),version=tostring(r.lockVersion or 1),label=keyLabel(category,id,r),plate=category=='vehicles' and r.plate or nil}
+  local ok,res,err=pcall(function() return exports.os_inventory:AddItem(c.id,keyItem(category,r),1,meta) end)
+  if not ok then return false,'Inventario no disponible.' end
+  return res==true,err
+end
+local function holdsKey(src,category,id)
+  local r=state[category] and state[category][tostring(id)]
+  if not r then return false end
+  -- Vehiculo de flota (/setcar negocio|faccion meter): el dueno y la plantilla del negocio o faccion lo usan sin llave.
+  if category=='vehicles' and r.fleet then
+    local b=state.businesses[tostring(r.fleet)];local alias=characterFor(src)
+    if b and alias and (b.owner==alias or (b.staff and b.staff[alias])) then return true end
+  end
+  if GetResourceState('os_inventory')~='started' then return false end
+  local ok,res=pcall(function() return exports.os_inventory:HasKey(src,KEY_KIND[category],tostring(id),tostring(r.lockVersion or 1)) end)
+  return ok and res==true
+end
+local function notifyAliasKey(alias,text) for _,p in ipairs(GetPlayers()) do if characterFor(tonumber(p))==alias then out(tonumber(p),text,'success') end end end
+-- Cambia la cerradura (version+1) y entrega una llave nueva al titular.
+local function changeLock(src,category,id)
+  local key=tostring(id)
+  if not action(src,'cambiar cerradura '..category..' '..key,function(d) local r=d[category][key];r.lockVersion=(r.lockVersion or 1)+1;r.lent=nil;return true end) then return false end
+  local r=state[category][key]
+  if r.owner then giveKeyItem(category,id,r.owner) end
+  return true
+end
+local function giveCopy(category,label)
+  return function(src,args)
+    local me=exists(src);if not me then return end
+    local id=positive(args[1]);local who=args[2] and resolve(args[2])
+    local record=id and state[category][tostring(id)]
+    if not record or not who then return out(src,('Uso: /darllave%s <id> <idJugador|alias>'):format(label)) end
+    if record.owner~=me then return out(src,'Solo el titular puede hacer copias de la llave.','error') end
+    local ok,err=giveKeyItem(category,id,who)
+    if not ok then return out(src,'No se pudo entregar la llave: '..tostring(err),'error') end
+    out(src,('Copia de la llave de %s entregada a %s.'):format(assetLabel(category,id,record),who),'success')
+    if who~=me then notifyAliasKey(who,('Has recibido una llave: %s.'):format(keyLabel(category,id,record))) end
+  end
+end
+local function replaceLock(category,label)
+  return function(src,args)
+    local me=exists(src);if not me then return end
+    local id=positive(args[1]);local record=id and state[category][tostring(id)]
+    if not record then return out(src,('Uso: /quitarllave%s <id> (cambia la cerradura: las copias dejan de servir)'):format(label)) end
+    if record.owner~=me then return out(src,'Solo el titular puede cambiar la cerradura.','error') end
+    if changeLock(src,category,id) then out(src,'Cerradura cambiada: las llaves anteriores ya no sirven. Tienes una llave nueva.','success') end
+  end
+end
+RegisterCommand('darllaveprop',giveCopy('properties','prop'),false)
+RegisterCommand('darllaveh',giveCopy('vehicles','h'),false)
+RegisterCommand('darllavenegocio',giveCopy('businesses','negocio'),false)
+RegisterCommand('quitarllaveprop',replaceLock('properties','prop'),false)
+RegisterCommand('quitarllaveh',replaceLock('vehicles','h'),false)
+RegisterCommand('quitarllavenegocio',replaceLock('businesses','negocio'),false)
+-- Admin: llave de cualquier bien para cualquier personaje (p. ej. si el titular la ha perdido).
+RegisterCommand('llave',function(src,args)
+  local category=KEY_CATEGORY[(args[1] or ''):lower()];local id=positive(args[2]);
+  if not needAdmin(src,category and assetPerm(category,id) or 'osdev.assets') then return end
+ local who=args[3] and resolve(args[3])
+  if not category or not id or not who or not state[category][tostring(id)] then return out(src,'Uso: /llave <propiedad|negocio|vehiculo> <id> <idJugador|alias>') end
+  local ok,err=giveKeyItem(category,id,who)
+  out(src,ok and ('Llave de #%d entregada a %s.'):format(id,who) or ('No se pudo: '..tostring(err)),ok and 'success' or 'error')
+end,false)
+
+-- Job del negocio (admin): sin job no se puede contratar a nadie.
+RegisterCommand('negociojob',function(src,args)
+  local id=positive(args[1]);
+  if not needAdmin(src,assetPerm('businesses',id)) then return end
+ local job=args[2] and args[2]:lower()
+  if not id or not state.businesses[tostring(id)] or not validAlias(job) then return out(src,'Uso: /negociojob <idNegocio> <job>') end
+  if action(src,'negociojob '..id..' '..job,function(d) d.businesses[tostring(id)].job=job;return true end) then out(src,'Negocio #'..id..' con job '..job..'.','success') end
+end,false)
+
+local B=OSDevtools.CoreConfig.Business
+local invites={} -- invitado (source) -> {business, rank, from, until}
+local function ownedBy(alias)
+  local list={}
+  for id,r in pairs(state.businesses) do if r.owner==alias then list[#list+1]=id end end
+  table.sort(list,function(a,b) return tonumber(a)<tonumber(b) end)
+  return list
+end
+local function nearbyPlayers(src)
+  local here=GetEntityCoords(GetPlayerPed(src));local list={}
+  for _,player in ipairs(GetPlayers()) do
+    local other=tonumber(player)
+    if other~=src and GetPlayerRoutingBucket(other)==GetPlayerRoutingBucket(src) and #(GetEntityCoords(GetPlayerPed(other))-here)<=B.InviteDistance then
+      local alias=characterFor(other)
+      if alias then list[#list+1]={id=other,name=alias} end
+    end
+  end
+  return list
+end
+local function businessView(src,alias)
+  local list={}
+  for _,id in ipairs(ownedBy(alias)) do
+    local r=state.businesses[id];local staff={}
+    for who,rank in pairs(r.staff or {}) do staff[#staff+1]={alias=who,rank=rank} end
+    table.sort(staff,function(a,b) return a.alias<b.alias end)
+    list[#list+1]={id=tonumber(id),name=r.name,label=assetLabel('businesses',id,r),job=r.job,ranks=r.ranks or {},staff=staff,salaries=r.salaries or {},dutyPoint=r.dutyPoint~=nil}
+  end
+  return {businesses=list,players=nearbyPlayers(src),minRanks=B.MinRanks,maxRanks=B.MaxRanks,payMinutes=B.PayMinutes,maxSalary=B.MaxSalary}
+end
+local function sendBusiness(src,message,kind)
+  local alias=characterFor(src);if not alias then return end
+  TriggerClientEvent('osdev:business:data',src,businessView(src,alias),message,kind)
+end
+local function ownBusiness(src,id)
+  local alias=characterFor(src);local key=tostring(tonumber(id) or '')
+  local r=alias and state.businesses[key]
+  if not r or r.owner~=alias then return nil end
+  return key,r,alias
+end
+local function rankIndex(r,name) for i,rank in ipairs(r.ranks or {}) do if rank==name then return i end end end
+
+RegisterCommand('negocio',function(src)
+  local alias=exists(src);if not alias then return end
+  if #ownedBy(alias)==0 then return out(src,'No eres titular de ningun negocio.','warning') end
+  if OSDevtools.JobView then OSDevtools.JobView[src]=nil end
+  TriggerClientEvent('osdev:business:open',src)
+  sendBusiness(src)
+end,false)
+RegisterNetEvent('osdev:business:refresh',function() if OSDevtools.JobView and OSDevtools.JobView[source] then return end;sendBusiness(source) end)
+
+-- Rangos: anadir (al final = el mas alto), subir/bajar orden o borrar si nadie lo tiene.
+RegisterNetEvent('osdev:business:rank',function(id,op,name,dir)
+  local src=source;local key,r=ownBusiness(src,id)
+  if not key then return end
+  if type(name)~='string' then return end
+  name=name:lower():gsub('^%s+',''):gsub('%s+$','')
+  local ok,err=core.change(src,'negocio rango '..key,function(d)
+    local b=d.businesses[key];b.ranks=b.ranks or {}
+    local index=rankIndex(b,name)
+    if op=='add' then
+      if not validAlias(name) or #name>20 then return false,'Nombre de rango no valido (letras, numeros o _).' end
+      if index then return false,'Ese rango ya existe.' end
+      if #b.ranks>=B.MaxRanks then return false,'Maximo '..B.MaxRanks..' rangos.' end
+      b.ranks[#b.ranks+1]=name
+    elseif op=='remove' then
+      if not index then return false,'Ese rango no existe.' end
+      for _,rank in pairs(b.staff or {}) do if rank==name then return false,'Alguien tiene ese rango: cambialo antes.' end end
+      table.remove(b.ranks,index)
+      if b.salaries then b.salaries[name]=nil;if next(b.salaries)==nil then b.salaries=nil end end
+    elseif op=='move' then
+      local to=index and index+(dir=='up' and 1 or -1)
+      if not index or to<1 or to>#b.ranks then return false,'No se puede mover.' end
+      b.ranks[index],b.ranks[to]=b.ranks[to],b.ranks[index]
+    else return false,'Operacion no valida.' end
+    if #b.ranks==0 then b.ranks=nil end
+    return true
+  end)
+  sendBusiness(src,ok and 'Rangos actualizados.' or err,ok and 'success' or 'error')
+end)
+
+-- Sueldo de un rango (0 = sin sueldo).
+RegisterNetEvent('osdev:business:salary',function(id,rank,amount)
+  local src=source;local key,r=ownBusiness(src,id)
+  if not key or type(rank)~='string' then return end
+  amount=math.tointeger(tonumber(amount))
+  if not amount or amount<0 or amount>B.MaxSalary then return sendBusiness(src,('El sueldo va de $0 a $%d.'):format(B.MaxSalary),'error') end
+  local ok,err=core.change(src,'negocio sueldo '..key..' '..rank..' '..amount,function(d)
+    local b=d.businesses[key];if not rankIndex(b,rank) then return false,'Ese rango no existe.' end
+    b.salaries=b.salaries or {};b.salaries[rank]=amount>0 and amount or nil
+    if next(b.salaries)==nil then b.salaries=nil end
+    return true
+  end)
+  local every=B.PayMinutes==60 and 'hora' or (B.PayMinutes..' min')
+  sendBusiness(src,ok and ('Sueldo de %s: $%d por %s conectado.'):format(rank,amount,every) or err,ok and 'success' or 'error')
+end)
+
+-- Nominas: cada minuto se cuenta a quien esta DE SERVICIO (fichado en el punto de servicio) con el job de un negocio
+-- en el que trabaja; al llegar a PayMinutes cobra el sueldo de su rango del banco del titular.
+local worked={}
+local function notifyAlias(alias,text,kind) for _,player in ipairs(GetPlayers()) do if characterFor(tonumber(player))==alias then out(tonumber(player),text,kind) end end end
+CreateThread(function()
+  while true do
+    Wait(60000)
+    for _,player in ipairs(GetPlayers()) do
+      local src=tonumber(player);local alias=characterFor(src);local c=alias and state.characters[alias]
+      local key,b
+      if c and c.job and c.duty then for id,r in pairs(state.businesses) do if r.job==c.job and r.staff and r.staff[alias] then key,b=id,r;break end end end
+      local public=c and c.duty and c.job and OSDevtools.PublicJobs[c.job]
+      if public then
+        worked[src]=(worked[src] or 0)+1
+        if worked[src]>=B.PayMinutes then
+          worked[src]=0
+          local index=1;for i,r in ipairs(public.ranks) do if r==c.rank then index=i end end
+          local amount=public.salaries[index] or 0
+          if amount>0 and core.change(src,('nomina publica %s %s %d'):format(c.job,alias,amount),function(d) local ch=d.characters[alias];ch.bank=(tonumber(ch.bank) or 0)+amount;return true end) then
+            out(src,('Nomina de %s: $%d (%s).'):format(public.label,amount,c.rank),'success')
+          end
+        end
+      elseif not b then worked[src]=nil else
+        worked[src]=(worked[src] or 0)+1
+        if worked[src]>=B.PayMinutes then
+          worked[src]=0
+          local rank=b.staff[alias];local amount=b.salaries and b.salaries[rank] or 0
+          if amount>0 and b.owner and b.owner~=alias then
+            local owner=b.owner
+            local ok,err=core.change(src,('nomina %s %s %d'):format(key,alias,amount),function(d)
+              local from,to=d.characters[owner],d.characters[alias]
+              if not from or not to then return false,'Personaje no encontrado.' end
+              if (tonumber(from.bank) or 0)<amount then return false,'insufficient_funds' end
+              from.bank=from.bank-amount;to.bank=(tonumber(to.bank) or 0)+amount;return true
+            end)
+            if ok then
+              out(src,('Nomina de %s: $%d (%s).'):format(b.name,amount,rank),'success')
+              notifyAlias(owner,('Pagada la nomina de %s: $%d.'):format(alias,amount),'info')
+            else
+              out(src,('%s no ha podido pagarte la nomina ($%d).'):format(b.name,amount),'warning')
+              notifyAlias(owner,('No hay saldo en el banco para la nomina de %s ($%d).'):format(alias,amount),'warning')
+            end
+          end
+        end
+      end
+    end
+  end
+end)
+AddEventHandler('playerDropped',function() worked[source]=nil end)
+
+-- Contratar: invitacion al jugador cercano, que acepta o rechaza.
+RegisterNetEvent('osdev:business:invite',function(id,target,rank)
+  local src=source;local key,r,alias=ownBusiness(src,id);target=tonumber(target)
+  if not key or not target then return end
+  local function fail(text) sendBusiness(src,text,'error') end
+  if not r.job then return fail('Este negocio no tiene job: pide a un administrador /negociojob '..key..' <job>.') end
+  if #(r.ranks or {})<B.MinRanks then return fail(('Crea al menos %d rangos antes de contratar.'):format(B.MinRanks)) end
+  if not rankIndex(r,rank) then return fail('Elige un rango del negocio.') end
+  local near=false;for _,p in ipairs(nearbyPlayers(src)) do if p.id==target then near=true end end
+  if not near then return fail('Ese jugador no esta cerca.') end
+  local who=characterFor(target)
+  if not who or who==alias then return fail('Jugador no valido.') end
+  if r.staff and r.staff[who] then return fail('Ya trabaja aqui.') end
+  local count=0;for _ in pairs(r.staff or {}) do count=count+1 end
+  if count>=B.MaxStaff then return fail('Plantilla completa.') end
+  if invites[target] and invites[target].untilAt>os.time() then return fail('Ese jugador ya tiene una invitacion pendiente.') end
+  invites[target]={business=key,rank=rank,from=src,untilAt=os.time()+B.InviteSeconds}
+  TriggerClientEvent('osdev:business:invited',target,{business=r.name,rank=rank,from=alias,seconds=B.InviteSeconds})
+  sendBusiness(src,'Invitacion enviada a '..who..'.','success')
+end)
+RegisterNetEvent('osdev:business:answer',function(accept)
+  local src=source;local invite=invites[src];invites[src]=nil
+  if not invite and OSDevtools.JobInvites and OSDevtools.JobInvites[src] then return end -- es una oferta de trabajo publico
+  if not invite or invite.untilAt<os.time() then return out(src,'La invitacion ha caducado.','warning') end
+  local r=state.businesses[invite.business];local who=characterFor(src)
+  if not r or not who or not rankIndex(r,invite.rank) or not r.job then return out(src,'La invitacion ya no es valida.','error') end
+  if not accept then
+    if GetPlayerName(invite.from) then sendBusiness(invite.from,who..' ha rechazado la oferta.','warning') end
+    return out(src,'Has rechazado la oferta.','info')
+  end
+  if action(src,'contratado '..invite.business..' '..who,function(d)
+    local b=d.businesses[invite.business];b.staff=b.staff or {};b.staff[who]=invite.rank
+    local c=d.characters[who];c.job=r.job;c.rank=invite.rank;c.duty=false;return true end) then
+    out(src,('Ahora trabajas en %s como %s.'):format(r.name,invite.rank),'success')
+    if OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(src) end
+    if GetPlayerName(invite.from) then sendBusiness(invite.from,who..' ha aceptado. Bienvenido a la plantilla.','success') end
+  end
+end)
+AddEventHandler('playerDropped',function() invites[source]=nil end)
+
+-- Plantilla: cambiar rango o despedir. Despedir quita el job si era el de este negocio.
+RegisterNetEvent('osdev:business:staff',function(id,who,op,rank)
+  local src=source;local key,r=ownBusiness(src,id)
+  if not key or type(who)~='string' or not (r.staff and r.staff[who]) then return end
+  local ok,err=core.change(src,'negocio plantilla '..key..' '..who,function(d)
+    local b=d.businesses[key];local c=d.characters[who]
+    if op=='rank' then
+      if not rankIndex(b,rank) then return false,'Rango no valido.' end
+      b.staff[who]=rank;if c and c.job==b.job then c.rank=rank end
+    elseif op=='fire' then
+      b.staff[who]=nil;if next(b.staff)==nil then b.staff=nil end
+      if c and c.job==b.job then c.job=nil;c.rank=nil;c.duty=false end
+    else return false,'Operacion no valida.' end
+    return true
+  end)
+  sendBusiness(src,ok and 'Plantilla actualizada.' or err,ok and 'success' or 'error')
+end)
+
+-- Ficha completa del personaje activo para /stats (os_hud). Solo para recursos de IdentityReaders.
+local function statsReader()
+  local caller=GetInvokingResource()
+  return caller==nil or caller==RESOURCE or OSDevtools.CoreConfig.IdentityReaders[caller]==true
+end
+-- Matricula de un vehiculo del registro por su ID (os_admin: /ircoche y /traerveh).
+exports('GetVehiclePlate',function(id)
+  local v=math.tointeger(tonumber(id)) and state.vehicles[tostring(math.tointeger(tonumber(id)))]
+  return v and v.plate or nil
+end)
+exports('GetCharacterStats',function(src)
+  if not statsReader() then return nil,'resource_not_authorized' end
+  local alias=characterFor(src);local c=alias and state.characters[alias]
+  if not c then return nil,'no_character' end
+  local function entry(category,id,record,extra)
+    local item={id=tonumber(id),label=assetLabel(category,id,record),owner=record.owner,plate=record.plate,type=record.type}
+    for k,v in pairs(extra or {}) do item[k]=v end
+    return item
+  end
+  local result={characterId=c.id,alias=alias,job=c.job,rank=c.rank,duty=c.duty==true,cash=c.cash or 0,bank=c.bank or 0,
+    vehicles={},vehiclesLent={},businesses={},businessesStaff={},properties={},propertiesLent={}}
+  for _,pair in ipairs({{'vehicles','vehicles'},{'properties','properties'}}) do
+    for id,record in pairs(state[pair[1]]) do
+      if record.owner==alias then result[pair[2]][#result[pair[2]]+1]=entry(pair[1],id,record) end
+    end
+  end
+  -- Bienes de otros de los que lleva una llave valida.
+  if GetResourceState('os_inventory')=='started' then
+    local ok,keys=pcall(function() return exports.os_inventory:ListKeys(src) end)
+    local seen={}
+    for _,k in ipairs(ok and type(keys)=='table' and keys or {}) do
+      local category=(k.kind=='vehicle' and 'vehicles') or (k.kind=='property' and 'properties') or nil
+      local record=category and state[category][tostring(k.target)]
+      if record and record.owner~=alias and tostring(record.lockVersion or 1)==k.version and not seen[category..k.target] then
+        seen[category..k.target]=true
+        local list=category=='vehicles' and result.vehiclesLent or result.propertiesLent
+        list[#list+1]=entry(category,k.target,record)
+      end
+    end
+  end
+  for id,record in pairs(state.businesses) do
+    if record.owner==alias then result.businesses[#result.businesses+1]=entry('businesses',id,record)
+    elseif record.staff and record.staff[alias] then result.businessesStaff[#result.businessesStaff+1]=entry('businesses',id,record,{rank=record.staff[alias],salary=record.salaries and record.salaries[record.staff[alias]] or 0}) end
+  end
+  for _,key in ipairs({'vehicles','vehiclesLent','businesses','businessesStaff','properties','propertiesLent'}) do
+    table.sort(result[key],function(a,b) return a.id<b.id end)
+  end
+  return result
+end)
+exports('HasAssetAccess',function(src,category,id)
+  if not statsReader() then return false end
+  local alias=characterFor(src);local record=alias and state[category] and state[category][tostring(id)]
+  if not record then return false end
+  return holdsKey(src,category,id)
+end)
+
+
+-- Chat: el autor de los mensajes es el personaje activo ("Oscar Vega"), no el nombre de la cuenta de FiveM.
+-- Se usa el hook oficial del chat de sistema; sin personaje se deja el nombre que ponga el chat.
+local function characterName(alias)
+  return (alias:gsub('_',' '):gsub('(%a)([%w]*)',function(first,rest) return first:upper()..rest end))
+end
+exports('GetCharacterName',function(src) local alias=characterFor(src);return alias and characterName(alias) or nil end)
+CreateThread(function()
+  local deadline=GetGameTimer()+30000
+  while GetResourceState('chat')~='started' and GetGameTimer()<deadline do Wait(500) end
+  local ok=pcall(function()
+    exports.chat:registerMessageHook(function(source,message,hook)
+      if type(source)~='number' or source<1 or type(message)~='table' or type(message.args)~='table' or #message.args<2 then return end
+      local alias=characterFor(source)
+      if alias then hook.updateMessage({args={characterName(alias),message.args[#message.args]}}) end
+    end)
+  end)
+  if not ok then print('[os_devtools] No se pudo enganchar al chat: los mensajes saldran con el nombre de FiveM.') end
+end)
+
+
+-- Puntos de servicio ---------------------------------------------------------------------------------------------
+-- Cada titular pone el punto de servicio de su negocio (/negocio > "Poner punto de servicio aqui"). Alli, con E, la
+-- plantilla (y el titular) entra o sale de servicio. Al desconectarse se sale de servicio.
+local onDuty={} -- source -> alias (para sacarle de servicio al salir)
+local function dutyPointsFor(src)
+  local alias=characterFor(src);local c=alias and state.characters[alias];local list={}
+  if not c then return list end
+  local job=c.job and OSDevtools.PublicJobs[c.job]
+  if job then
+    for i,p in ipairs(OSDevtools.JobPoints(c.job)) do list[#list+1]={id=('job:%s:%d'):format(c.job,i),name=(p.label or job.label),x=p.x,y=p.y,z=p.z,onDuty=c.duty==true} end
+  end
+  for id,r in pairs(state.businesses) do
+    if r.dutyPoint and r.job and (r.owner==alias or (r.staff and r.staff[alias])) then
+      list[#list+1]={id=tonumber(id),name=r.name,x=r.dutyPoint.x,y=r.dutyPoint.y,z=r.dutyPoint.z,onDuty=c.duty==true and c.job==r.job}
+    end
+  end
+  return list
+end
+local function pushDutyPoints(src) TriggerClientEvent('osdev:dutyPoints',src,dutyPointsFor(src)) end
+OSDevtools.PushDutyPoints=pushDutyPoints
+RegisterNetEvent('osdev:dutyPointsRequest',function() pushDutyPoints(source) end)
+RegisterNetEvent('osdev:business:dutyPoint',function(id)
+  local src=source;local key=ownBusiness(src,id)
+  if not key then return end
+  local pos=getCoords(src);if not pos then return sendBusiness(src,'No se pudo leer tu posicion.','error') end
+  local ok,err=core.change(src,'negocio punto servicio '..key,function(d) d.businesses[key].dutyPoint={x=pos.x,y=pos.y,z=pos.z};return true end)
+  sendBusiness(src,ok and 'Punto de servicio puesto aqui. Tu plantilla ficha con E en este sitio.' or err,ok and 'success' or 'error')
+  if ok then for _,p in ipairs(GetPlayers()) do pushDutyPoints(tonumber(p)) end end
+end)
+RegisterNetEvent('osdev:business:duty',function(id)
+  local src=source;local key=tostring(tonumber(id) or '');local r=state.businesses[key]
+  local alias=characterFor(src);local c=alias and state.characters[alias]
+  if not r or not c or not r.dutyPoint or not r.job then return end
+  if not (r.owner==alias or (r.staff and r.staff[alias])) then return out(src,'No trabajas en este negocio.','error') end
+  local pos=getCoords(src);local p=r.dutyPoint
+  if not pos or (pos.x-p.x)^2+(pos.y-p.y)^2+(pos.z-p.z)^2>9 then return out(src,'Acercate al punto de servicio.','warning') end
+  local entering=not (c.duty and c.job==r.job)
+  local ok=action(src,'servicio '..key..' '..alias..' '..tostring(entering),function(d)
+    local ch=d.characters[alias]
+    if entering then
+      -- El titular que no esta en plantilla entra con el rango mas alto.
+      local rank=r.staff and r.staff[alias] or (r.ranks and r.ranks[#r.ranks]) or 'titular'
+      ch.job=r.job;ch.rank=rank;ch.duty=true
+    else ch.duty=false end
+    return true
+  end)
+  if not ok then return end
+  if entering then onDuty[src]=alias else onDuty[src]=nil end
+  out(src,entering and ('De servicio en %s.'):format(r.name) or ('Fuera de servicio en %s.'):format(r.name),entering and 'success' or 'info')
+  pushDutyPoints(src);pushHud(src)
+end)
+AddEventHandler('playerDropped',function()
+  local alias=onDuty[source];onDuty[source]=nil
+  if alias and state.characters[alias] and state.characters[alias].duty then
+    core.change(0,'fuera de servicio al salir '..alias,function(d) d.characters[alias].duty=false;return true end)
+  end
+end)
+
+
+-- Concesionarios (config/dealerships.lua + data/dealerships.json) -------------------------------------------------------
+-- Valores de serie en config; lo que cambian los administradores en /concesionarios (precios, modelos, puntos) se guarda
+-- en data/dealerships.json por concesionario y manda sobre el config.
+local dealerOverrides=(function() local raw=LoadResourceFile(RESOURCE,'data/dealerships.json');local ok,data=pcall(json.decode,raw or '{}');return ok and type(data)=='table' and data or {} end)()
+local function dealer(id)
+  local base=OSDevtools.Dealerships[id];if not base then return nil end
+  local o=dealerOverrides[id] or {}
+  return {id=id,label=base.label,blip=base.blip,distance=base.distance,order=base.order or 99,colors=base.colors,
+    counter=o.counter or base.counter,delivery=o.delivery or base.delivery,catalog=o.catalog or base.catalog,
+    preview=o.preview or base.preview or o.delivery or base.delivery}
+end
+local function dealerList()
+  local list={};for id in pairs(OSDevtools.Dealerships) do list[#list+1]=dealer(id) end
+  table.sort(list,function(a,b) return a.order<b.order end)
+  return list
+end
+local function publicDealers()
+  local list={};for _,d in ipairs(dealerList()) do list[#list+1]={id=d.id,label=d.label,blip=d.blip,distance=d.distance,counter=d.counter} end
+  return list
+end
+local function pushDealers(target) TriggerClientEvent('osdev:dealers',target or -1,publicDealers()) end
+RegisterNetEvent('osdev:dealersRequest',function() pushDealers(source) end)
+local dealerBusy={}
+local function nearDealer(src,d)
+  local pos=getCoords(src);local c=d.counter
+  return pos and (pos.x-c.x)^2+(pos.y-c.y)^2+(pos.z-c.z)^2<=(d.distance+1.5)^2
+end
+RegisterNetEvent('osdev:dealer:open',function(id)
+  local src=source;local d=type(id)=='string' and dealer(id)
+  if not d or not exists(src) then return end
+  if not nearDealer(src,d) then return out(src,'Acercate al mostrador.','warning') end
+  TriggerClientEvent('osdev:dealer',src,{id=id,label=d.label,catalog=d.catalog,colors=d.colors,preview=d.preview})
+end)
+RegisterNetEvent('osdev:dealer:buy',function(id,model,color,account)
+  local src=source;local d=type(id)=='string' and dealer(id)
+  local alias=exists(src);if not d or not alias then return end
+  local function result(ok,text) TriggerClientEvent('osdev:dealerResult',src,ok,text) end
+  if dealerBusy[src] then return result(false,'Ya hay una compra en curso.') end
+  if not nearDealer(src,d) then return result(false,'Acercate al mostrador.') end
+  local entry;for _,e in ipairs(d.catalog) do if e.model==model then entry=e end end
+  if not entry then return result(false,'Ese vehiculo no esta a la venta aqui.') end
+  if account~='cash' and account~='bank' then return result(false,'Elige efectivo o tarjeta.') end
+  local colorOk=false;color=math.tointeger(tonumber(color));for _,c in ipairs(d.colors) do if c==color then colorOk=true end end
+  if not colorOk then color=d.colors[1] end
+  if account=='bank' and GetResourceState('os_inventory')=='started' then
+    local ok,has=pcall(function() return exports.os_inventory:PlayerHasItem(src,'bank_card') end)
+    if not ok or has~=true then return result(false,'Para pagar con tarjeta necesitas tu tarjeta bancaria.') end
+  end
+  if not vehicles.onesync() then return result(false,'El servidor no puede crear vehiculos ahora mismo.') end
+  dealerBusy[src]=true
+  vehicles.inspect(src,{entry.model},function(types)
+    dealerBusy[src]=nil
+    local vtype=types and types[entry.model]
+    if not vtype then return result(false,'Ese modelo no esta disponible.') end
+    local point=d.delivery;local vid,plate
+    local ok,err=core.change(src,('concesionario %s %s %s %d'):format(id,alias,entry.model,entry.price),function(data)
+      local c=data.characters[alias]
+      if (tonumber(c[account]) or 0)<entry.price then return false,account=='cash' and 'No llevas suficiente efectivo.' or 'No tienes saldo suficiente en el banco.' end
+      c[account]=c[account]-entry.price
+      vid=data.nextVehicle;data.nextVehicle=vid+1;plate=randomPlate(data)
+      data.vehicles[tostring(vid)]={id=vid,model=entry.model,primary=color,secondary=color,fixed=true,owner=alias,plate=plate,
+        position={x=point.x,y=point.y,z=point.z,h=point.h or 0,bucket=0},vtype=vtype}
+      return true
+    end)
+    if not ok then return result(false,err or 'No se pudo completar la compra.') end
+    giveKeyItem('vehicles',vid,alias)
+    local entity=vehicles.spawn(vid,state.vehicles[tostring(vid)],state.vehicles[tostring(vid)].position)
+    result(true,('Comprado %s por $%d. Matricula %s: lo tienes en la entrega con su llave.'):format(entry.label,entry.price,plate))
+    if not entity then out(src,'El vehiculo esta registrado pero no ha aparecido: /recuperarvehiculo '..vid..' (admin).','warning') end
+    pushHud(src)
+  end)
+end)
+AddEventHandler('playerDropped',function() dealerBusy[source]=nil end)
+
+-- Administracion: /concesionarios abre el panel (precios, modelos y puntos de cada concesionario).
+local function saveDealer(id,d)
+  local o=dealerOverrides[id] or {}
+  dealerOverrides[id]={counter=d.counter,delivery=d.delivery,catalog=d.catalog,preview=d.previewSet or o.preview}
+  SaveResourceFile(RESOURCE,'data/dealerships.json',json.encode(dealerOverrides),-1)
+  pushDealers()
+end
+local function adminDealers(src,message,kind) TriggerClientEvent('osdev:dealerAdmin',src,{dealers=dealerList()},message,kind) end
+RegisterCommand('concesionarios',function(src)
+  if not needAdmin(src,'osdev.assets.dealers') then return end
+  adminDealers(src)
+end,false)
+RegisterNetEvent('osdev:dealer:admin',function(op,id,a,b,c)
+  local src=source
+  if not admin(src,'osdev.assets.dealers') then return end
+  local d=type(id)=='string' and dealer(id);if not d then return end
+  local catalog={};for _,e in ipairs(d.catalog) do catalog[#catalog+1]={model=e.model,label=e.label,price=e.price} end
+  d.catalog=catalog
+  local function find(model) for i,e in ipairs(catalog) do if e.model==model then return i,e end end end
+  if op=='price' then
+    local i,e=find(a);local price=math.tointeger(tonumber(b))
+    if not e or not price or price<0 or price>100000000 then return adminDealers(src,'Precio no valido.','error') end
+    e.price=price
+  elseif op=='add' then
+    local model=type(a)=='string' and a:lower() or '';local label=type(b)=='string' and b:gsub('[%c<>]',''):sub(1,48) or '';local price=math.tointeger(tonumber(c))
+    if not model:match('^[%w_]+$') or #model>32 or label=='' or not price or price<0 then return adminDealers(src,'Modelo, nombre o precio no validos.','error') end
+    if find(model) then return adminDealers(src,'Ese modelo ya esta en el catalogo.','warning') end
+    catalog[#catalog+1]={model=model,label=label,price=price}
+  elseif op=='remove' then
+    local i=find(a);if not i then return end
+    table.remove(catalog,i)
+  elseif op=='counter' or op=='delivery' or op=='preview' then
+    local pos=getCoords(src);if not pos then return end
+    if op=='counter' then d.counter={x=pos.x,y=pos.y,z=pos.z}
+    elseif op=='delivery' then d.delivery={x=pos.x,y=pos.y,z=pos.z,h=pos.h or 0}
+    else d.previewSet={x=pos.x,y=pos.y,z=pos.z,h=pos.h or 0} end
+  else return end
+  saveDealer(id,d)
+  adminDealers(src,'Guardado.','success')
+end)
+
+
+-- Sistema de heridos (os_life): reanimar en el sitio o despertar en el hospital. Solo os_life.
+exports('ReviveCharacter',function(src)
+  if GetInvokingResource()~='os_life' then return false,'resource_not_authorized' end
+  return core.revive(src)
+end)
+exports('RespawnAtHospital',function(src)
+  if GetInvokingResource()~='os_life' then return false,'resource_not_authorized' end
+  local alias=core.ensure(src);local c=alias and state.characters[alias]
+  if not c or c.life~='dead' then return false,'not_dead' end
+  return core.requestSpawn(src,'death')
+end)
+
+
+-- Trabajos publicos (config/jobs.lua) -------------------------------------------------------------------------------
+-- Policia, sheriff, FIB, bomberos y EMS no son negocios: rangos fijos, sueldo del ayuntamiento por hora de servicio y
+-- puntos de servicio en sus sedes. Los mandos (rango >= boss) gestionan la plantilla con /trabajo.
+local extraPoints=(function() local raw=LoadResourceFile(RESOURCE,'data/job_points.json');local ok,data=pcall(json.decode,raw or '{}');return ok and type(data)=='table' and data or {} end)()
+function OSDevtools.JobPoints(job)
+  local list={}
+  for _,p in ipairs((OSDevtools.PublicJobs[job] or {}).duty or {}) do list[#list+1]=p end
+  for _,p in ipairs(extraPoints[job] or {}) do list[#list+1]=p end
+  return list
+end
+OSDevtools.JobView,OSDevtools.JobInvites={},{}
+local function rankIndexOf(job,rank) for i,r in ipairs(job.ranks) do if r==rank then return i end end end
+local function jobOf(src)
+  local alias=characterFor(src);local c=alias and state.characters[alias];local job=c and c.job and OSDevtools.PublicJobs[c.job]
+  return alias,c,job
+end
+local function isBoss(c,job) return job and (rankIndexOf(job,c.rank) or 0)>=job.boss end
+local function jobView(src)
+  local alias,c,job=jobOf(src)
+  local staff={}
+  for who,ch in pairs(state.characters) do if ch.job==c.job then staff[#staff+1]={alias=who,rank=ch.rank} end end
+  table.sort(staff,function(a,b) return (rankIndexOf(job,a.rank) or 0)>(rankIndexOf(job,b.rank) or 0) or ((rankIndexOf(job,a.rank) or 0)==(rankIndexOf(job,b.rank) or 0) and a.alias<b.alias) end)
+  local salaries={};for i,r in ipairs(job.ranks) do salaries[r]=job.salaries[i] end
+  local players={}
+  for _,p in ipairs(nearbyPlayers(src)) do players[#players+1]=p end
+  return {mode='job',businesses={{id='job:'..c.job,name=job.label,job=c.job,ranks=job.ranks,staff=staff,salaries=salaries,public=true,boss=isBoss(c,job),myRank=c.rank}},
+    players=players,minRanks=0,maxRanks=#job.ranks,payMinutes=B.PayMinutes}
+end
+local function sendJob(src,message,kind) TriggerClientEvent('osdev:business:data',src,jobView(src),message,kind) end
+RegisterCommand('trabajo',function(src)
+  local alias,c,job=jobOf(src);if not alias then return end
+  if not job then return out(src,'No tienes un trabajo publico (policia, sheriff, FIB, bomberos o EMS).','warning') end
+  OSDevtools.JobView[src]=true
+  TriggerClientEvent('osdev:business:open',src)
+  sendJob(src)
+end,false)
+RegisterNetEvent('osdev:business:refresh',function() local src=source;if OSDevtools.JobView[src] then local _,_,job=jobOf(src);if job then sendJob(src) end end end)
+RegisterNetEvent('osdev:business:invite',function(id,target,rank)
+  local src=source;if type(id)~='string' or not id:match('^job:') then return end
+  local alias,c,job=jobOf(src);target=tonumber(target)
+  if not job or id~='job:'..c.job then return end
+  if not isBoss(c,job) then return sendJob(src,'Solo los mandos pueden contratar.','error') end
+  local index=rankIndexOf(job,rank)
+  if not index or index>=rankIndexOf(job,c.rank) then return sendJob(src,'Solo puedes contratar en rangos por debajo del tuyo.','error') end
+  local near=false;for _,p in ipairs(nearbyPlayers(src)) do if p.id==target then near=true end end
+  if not near then return sendJob(src,'Ese jugador no esta cerca.','error') end
+  local who=characterFor(target);if not who then return sendJob(src,'Jugador no valido.','error') end
+  if state.characters[who].job==c.job then return sendJob(src,'Ya trabaja aqui.','warning') end
+  OSDevtools.JobInvites[target]={job=c.job,rank=rank,from=src,untilAt=os.time()+B.InviteSeconds}
+  TriggerClientEvent('osdev:business:invited',target,{business=job.label,rank=rank,from=alias,seconds=B.InviteSeconds})
+  sendJob(src,'Oferta enviada a '..who..'.','success')
+end)
+RegisterNetEvent('osdev:business:answer',function(accept)
+  local src=source;local invite=OSDevtools.JobInvites[src];OSDevtools.JobInvites[src]=nil
+  if not invite then return end
+  if invite.untilAt<os.time() then return out(src,'La oferta ha caducado.','warning') end
+  local who=characterFor(src);local job=OSDevtools.PublicJobs[invite.job]
+  if not accept then if GetPlayerName(invite.from) then sendJob(invite.from,who..' ha rechazado la oferta.','warning') end;return out(src,'Has rechazado la oferta.','info') end
+  if action(src,'contratado '..invite.job..' '..who,function(d) local ch=d.characters[who];ch.job=invite.job;ch.rank=invite.rank;ch.duty=false;return true end) then
+    out(src,('Ahora trabajas en %s como %s. Ficha en tu sede para entrar de servicio.'):format(job.label,invite.rank),'success')
+    if OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(src) end
+    if GetPlayerName(invite.from) then sendJob(invite.from,who..' se ha incorporado.','success') end
+  end
+end)
+RegisterNetEvent('osdev:business:staff',function(id,who,op,rank)
+  local src=source;if type(id)~='string' or not id:match('^job:') or type(who)~='string' then return end
+  local alias,c,job=jobOf(src)
+  if not job or id~='job:'..c.job then return end
+  local target=state.characters[who]
+  if not isBoss(c,job) or not target or target.job~=c.job or who==alias then return sendJob(src,'No puedes cambiar a esa persona.','error') end
+  if (rankIndexOf(job,target.rank) or 0)>=rankIndexOf(job,c.rank) then return sendJob(src,'Solo puedes gestionar rangos por debajo del tuyo.','error') end
+  local ok,err=core.change(src,'trabajo plantilla '..c.job..' '..who,function(d)
+    local t=d.characters[who]
+    if op=='rank' then local i=rankIndexOf(job,rank);if not i or i>=rankIndexOf(job,c.rank) then return false,'Rango no valido.' end;t.rank=rank
+    elseif op=='fire' then t.job='unemployed';t.rank='-';t.duty=false
+    else return false,'Operacion no valida.' end
+    return true
+  end)
+  sendJob(src,ok and 'Plantilla actualizada.' or err,ok and 'success' or 'error')
+end)
+RegisterNetEvent('osdev:business:duty',function(id)
+  local src=source;if type(id)~='string' then return end
+  local jobName,index=id:match('^job:([%w_]+):(%d+)$');if not jobName then return end
+  local alias,c,job=jobOf(src)
+  if not job or c.job~=jobName then return out(src,'Este no es tu trabajo.','error') end
+  local p=OSDevtools.JobPoints(jobName)[tonumber(index)];local pos=getCoords(src)
+  if not p or not pos or (pos.x-p.x)^2+(pos.y-p.y)^2+(pos.z-p.z)^2>9 then return out(src,'Acercate al punto de servicio.','warning') end
+  local entering=not c.duty
+  if action(src,'servicio publico '..jobName..' '..alias..' '..tostring(entering),function(d) d.characters[alias].duty=entering;return true end) then
+    out(src,entering and ('De servicio en %s.'):format(job.label) or ('Fuera de servicio en %s.'):format(job.label),entering and 'success' or 'info')
+    if OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(src) end
+    pushHud(src)
+  end
+end)
+-- Admin: otro punto de servicio para un trabajo publico en tu posicion (data/job_points.json).
+RegisterCommand('puntotrabajo',function(src,args)
+  if not needAdmin(src,'osdev.jobs') then return end
+  local jobName=args[1] and args[1]:lower();local job=jobName and OSDevtools.PublicJobs[jobName]
+  if not job then local names={};for n in pairs(OSDevtools.PublicJobs) do names[#names+1]=n end;table.sort(names);return out(src,'Uso: /puntotrabajo <'..table.concat(names,'|')..'> [nombre]') end
+  local pos=getCoords(src);if not pos then return end
+  extraPoints[jobName]=extraPoints[jobName] or {}
+  local label=table.concat(args,' ',2);if label=='' then label=job.label end
+  extraPoints[jobName][#extraPoints[jobName]+1]={x=pos.x,y=pos.y,z=pos.z,label=label:sub(1,40)}
+  SaveResourceFile(RESOURCE,'data/job_points.json',json.encode(extraPoints),-1)
+  out(src,'Punto de servicio de '..job.label..' anadido aqui.','success')
+  for _,p in ipairs(GetPlayers()) do if OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(tonumber(p)) end end
+end,false)
+AddEventHandler('playerDropped',function() OSDevtools.JobView[source]=nil;OSDevtools.JobInvites[source]=nil end)

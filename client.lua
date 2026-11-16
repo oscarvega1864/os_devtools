@@ -83,6 +83,48 @@ RegisterNetEvent('osdev:doListLiveries',function()
   local b=GetNumVehicleMods(veh,48)
   msg(('Liveries: sistema nativo=%d | mod48=%d. Indices disponibles: 0 a cantidad-1.'):format(math.max(a,0),math.max(b,0)))
 end)
+-- /setcar: efectos que solo puede aplicar quien controla el vehiculo (el servidor elige a ese jugador).
+local function controlOf(vehicle)
+  local deadline=GetGameTimer()+1500
+  while not NetworkHasControlOfEntity(vehicle) and GetGameTimer()<deadline do NetworkRequestControlOfEntity(vehicle);Wait(0) end
+  return NetworkHasControlOfEntity(vehicle)
+end
+RegisterNetEvent('osdev:setcarEffect',function(netId,op,value)
+  if source~=65535 or type(op)~='string' then return end
+  local vehicle=NetworkDoesNetworkIdExist(netId or 0) and NetworkGetEntityFromNetworkId(netId) or 0
+  if vehicle==0 or not DoesEntityExist(vehicle) or not IsEntityAVehicle(vehicle) then return end
+  CreateThread(function()
+    if not controlOf(vehicle) then return end
+    if op=='repair' then
+      SetVehicleFixed(vehicle);SetVehicleDeformationFixed(vehicle)
+      SetVehicleEngineHealth(vehicle,1000.0);SetVehicleBodyHealth(vehicle,1000.0);SetVehiclePetrolTankHealth(vehicle,1000.0)
+      SetVehicleDirtLevel(vehicle,0.0);SetVehicleUndriveable(vehicle,false)
+      for wheel=0,7 do SetVehicleTyreFixed(vehicle,wheel) end
+    elseif op=='fuel' and tonumber(value) then
+      local level=math.max(0.0,math.min(100.0,tonumber(value)+0.0))
+      local ok=GetResourceState('LegacyFuel')=='started' and pcall(function() exports.LegacyFuel:SetFuel(vehicle,level) end)
+      if not ok then SetVehicleFuelLevel(vehicle,level) end
+    elseif op=='livery' and type(value)=='table' and tonumber(value.index) then
+      applyLivery(vehicle,tonumber(value.index),value.kind)
+    end
+  end)
+end)
+-- /setcar livery: comprueba que tipos de livery admite el modelo y devuelve el que corresponde.
+RegisterNetEvent('osdev:setcarLiveryCheck',function(netId,index,kind)
+  if source~=65535 then return end
+  local vehicle=NetworkDoesNetworkIdExist(netId or 0) and NetworkGetEntityFromNetworkId(netId) or 0
+  if vehicle==0 or not DoesEntityExist(vehicle) then return msg('Acercate al vehiculo: tiene que estar cargado para ver sus liveries.') end
+  SetVehicleModKit(vehicle,0)
+  local native,mods=GetVehicleLiveryCount(vehicle),GetNumVehicleMods(vehicle,48)
+  if not kind then
+    if native>0 and mods>0 then return msg('Este vehiculo admite dos tipos: /setcar livery '..index..' native|mod48 ...') end
+    kind=native>0 and 'native' or (mods>0 and 'mod48' or nil)
+  end
+  if not kind then return msg('Este vehiculo no tiene liveries.') end
+  local count=kind=='native' and native or mods
+  if index>=count then return msg(('Livery fuera de rango: hay %d (0 a %d).'):format(count,count-1)) end
+  TriggerServerEvent('osdev:setcarLivery',netId,index,kind)
+end)
 RegisterNetEvent('osdev:doSetLivery',function(args)
   local veh=currentVehicle();if not veh then return end
   local n=tonumber(args[1]);if not n or n%1~=0 or n<0 then return msg('Uso: /setlivery <indice> [native|mod48]') end

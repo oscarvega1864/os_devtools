@@ -121,7 +121,8 @@ test('Loading preview shows only the connecting account own bound character and 
 end)
 
 test('Weapons are saved per character, given back on spawn, ignored while switching and validated',function()
-    local c=fixture();withSecond(c);net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:chooseCharacter',1,'oscar_vega')
+    local c=fixture();OSDevtools.WeaponsConfig.Enabled=true -- sistema anterior: apagado por defecto desde os_inventory 0.2.0
+    withSecond(c);net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:chooseCharacter',1,'oscar_vega')
     local context=ack(c,1);assert(type(context.weapons)=='table' and #context.weapons==0)
     local list={{name='WEAPON_PISTOL',ammo=60,components={'COMPONENT_AT_PI_SUPP','COMPONENT_AT_PI_FLSH'}},{name='WEAPON_KNIFE',ammo=0,tint=0}}
     net(c,'osdev:weapons',1,list)

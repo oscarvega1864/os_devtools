@@ -84,11 +84,15 @@ function OSDevtools.AuthorizationHub.new(options)
         if source==0 then return true,'console' end
         local principal=options.identity(source)
         if not OSDevtools.AuthIdentity.valid(principal) then return false,'invalid_persistent_identity' end
-        if native(source,permission) or (definition.parent and native(source,definition.parent)) then return true,'ace' end
+        -- El permiso y su cadena de padres (osdev.assets.properties -> osdev.assets -> osdev.admin).
+        local chain,node={},permission
+        while node and #chain<6 do chain[#chain+1]=node;node=config.Permissions[node] and config.Permissions[node].parent end
+        for _,scope in ipairs(chain) do if native(source,scope) then return true,'ace' end end
         local proof=proofFor(source)
         local lease=leases[source]
-        if proof and lease and lease.principal==principal and options.now()<lease.expires
-            and (lease.scopes[permission] or (definition.parent and lease.scopes[definition.parent])) then return true,'txadmin_explicit_lease' end
+        if proof and lease and lease.principal==principal and options.now()<lease.expires then
+            for _,scope in ipairs(chain) do if lease.scopes[scope] then return true,'txadmin_explicit_lease' end end
+        end
         for resource,callback in pairs(providers) do
             local allowed=config.ExternalProviders[resource]
             if allowed and allowed[permission] and options.resourceState(resource)=='started' then

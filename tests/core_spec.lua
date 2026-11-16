@@ -324,6 +324,17 @@ test('crearnegocio uses fixed categories, multi-word names, automatic IDs and no
     c.command('crearnegocio',1,{'discoteca','Vanilla','50000'});assert(c.snapshot().businesses['3'].type=='discoteca' and c.snapshot().nextBusiness==4)
     c.command('setnegocio',1,{'3','oscar_vega'});assert(c.snapshot().businesses['3'].owner=='oscar_vega')
 end)
+test('setcar puts a registered vehicle in a business or faction fleet and back out, checking the type',function()
+    local c=fixture()
+    c.command('crearnegocio',1,{'faccion','Ballas','0'})
+    local fid=c.snapshot().nextBusiness-1;assert(c.snapshot().businesses[tostring(fid)].type=='faccion')
+    c.command('setcar',1,{'negocio','meter',tostring(fid),'1'});assert(c.snapshot().vehicles['1'].fleet==nil,'a faction is not a business')
+    c.command('setcar',1,{'negocio','meter','1','1'});assert(c.snapshot().vehicles['1'].fleet==1)
+    c.command('setcar',1,{'faccion','sacar',tostring(fid),'1'});assert(c.snapshot().vehicles['1'].fleet==1,'not in that faction')
+    c.command('setcar',1,{'negocio','sacar','1','1'});assert(c.snapshot().vehicles['1'].fleet==nil)
+    c.command('setcar',1,{'faccion','meter',tostring(fid),'1'});assert(c.snapshot().vehicles['1'].fleet==fid)
+    local data=c.snapshot();data.vehicles['1'].fleet='x';assert(not OSDevtools.State.snapshot(data),'fleet must be an integer')
+end)
 test('Business blips reach every player on change, on request, and are not resent when nothing visible changed',function()
     local c=fixture();local function last(source)
         for i=#c.messages,1,-1 do local m=c.messages[i];if m.name=='osdev:businessBlips' and m.source==source then return m.args[1],i end end
@@ -361,10 +372,10 @@ local function entities(c) local n=0;for _ in pairs(c.world) do n=n+1 end;return
 test('crearvehiculo is created by the server ahead of the admin after a model type check, with plate, colours and state bag',function()
     local c=fixture();c.command('crearvehiculo',1,{'rebla','1','1','fijo','1'});assert(entities(c)==0)
     answer(c,1,{rebla='automobile'})
-    local v=c.snapshot().vehicles['2'];assert(v.vtype=='automobile' and v.fixed and v.owner=='oscar_vega' and v.plate=='OS000002')
+    local v=c.snapshot().vehicles['2'];assert(v.vtype=='automobile' and v.fixed and v.owner=='oscar_vega' and v.plate:match('^[1-9][A-HJ-NPR-Z][A-HJ-NPR-Z][A-HJ-NPR-Z]%d%d%d$'),'random US plate: 1 digit, 3 letters, 3 digits')
     assert(math.abs(v.position.x-6)<0.001 and math.abs(v.position.y-20)<0.001 and v.position.h==90)
     local e=next(c.world);local w=c.world[e]
-    assert(w.kind=='automobile' and w.plate=='OS000002' and w.orphan==2 and w.colours[1]==1 and w.state.osdev.id==2)
+    assert(w.kind=='automobile' and w.plate==v.plate and w.orphan==2 and w.colours[1]==1 and w.state.osdev.id==2)
     local before=c.writes;c.command('crearvehiculo',1,{'notacar','0'});answer(c,1,{notacar=false})
     assert(c.writes==before and entities(c)==1 and not c.snapshot().vehicles['3'])
     source=2;c.net['osdev:vehicleModelTypes']('1:1',{rebla='automobile'});assert(c.writes==before)
@@ -372,7 +383,8 @@ end)
 test('Fixed vehicles are recreated after a server restart at their last saved position and never duplicated on resource restart',function()
     local c=fixture();c.command('crearvehiculo',1,{'rebla','1','1','fijo'});answer(c,1,{rebla='automobile'})
     c.command('crearvehiculo',1,{'faggio','0','temporal'});answer(c,1,{faggio='bike'});assert(entities(c)==2)
-    local e;for handle,w in pairs(c.world) do if w.plate=='OS000002' then e=handle end end
+    local e;for handle,w in pairs(c.world) do if w.plate==c.snapshot().vehicles['2'].plate then e=handle end end
+    assert(c.snapshot().vehicles['2'].plate~=c.snapshot().vehicles['3'].plate)
     c.world[e].point={x=500,y=600,z=40};c.world[e].h=180
     assert(OSDevtools.VehicleRuntime.savePositions('periodic'));local before=c.writes
     assert(not OSDevtools.VehicleRuntime.savePositions('periodic'));assert(c.writes==before)
@@ -380,7 +392,7 @@ test('Fixed vehicles are recreated after a server restart at their last saved po
     c.event('onResourceStop',nil,'os_devtools');assert(entities(c)==1 and c.world[e])
     local again=fixture(c.files,{world=c.world,nextEntity=c.nextEntity});assert(entities(again)==1)
     local server=fixture(c.files);assert(entities(server)==1)
-    local _,w=next(server.world);assert(w.plate=='OS000002' and w.point.x==500 and w.h==180 and w.kind=='automobile')
+    local _,w=next(server.world);assert(w.plate==server.snapshot().vehicles['2'].plate and w.point.x==500 and w.h==180 and w.kind=='automobile')
 end)
 test('Old fixed vehicles without a type are completed by an admin client, persisted and then restored',function()
     local data=legacy();data.vehicles['1'].position={x=1,y=2,z=3,h=0,bucket=0}
