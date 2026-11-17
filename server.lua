@@ -480,8 +480,11 @@ RegisterCommand('crearvehiculo',function(src,args)
       return true
     end) then return end
     local entity,err=vehicles.spawn(id,state.vehicles[tostring(id)],point)
-    if who then giveKeyItem('vehicles',id,who) end
-    if entity then out(src,('Vehiculo #%d (%s, %s) creado delante de ti. Matricula %s.'):format(id,model,mode,plate),'success')
+    -- La llave: al personaje dueno si se indica; si no, a quien lo crea (sin ella no arranca, tampoco aviones ni barcos).
+    local keyFor=who or characterFor(src)
+    local keyOk=keyFor and giveKeyItem('vehicles',id,keyFor)
+    local keyText=keyOk and (' Llave entregada a %s.'):format(keyFor==who and who or 'ti') or ' No se pudo entregar la llave (usa /llave vehiculo '..id..' <jugador>).'
+    if entity then out(src,('Vehiculo #%d (%s, %s) creado delante de ti. Matricula %s.%s'):format(id,model,mode,plate,keyText),'success')
     else out(src,('Vehiculo #%d registrado, pero %s Reintenta con /recuperarvehiculo %d.'):format(id,err,id),'error') end
   end)
 end,false)
