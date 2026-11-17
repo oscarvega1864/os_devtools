@@ -40,8 +40,9 @@ CreateThread(function()
     end
 end)
 -- Vista previa: el modelo elegido aparece (solo para ti, no se sincroniza) en el punto de vista previa del concesionario,
--- con el color marcado, y una camara gira a su alrededor. El catalogo queda a la derecha.
-local preview = { vehicle = nil, cam = nil, point = nil, model = nil, angle = 0.0, token = 0 }
+-- con el color marcado. El coche esta quieto y la camara la mueve el jugador: arrastrar en la zona libre de la
+-- pantalla gira alrededor y sube o baja; la rueda acerca y aleja. El catalogo queda a la derecha.
+local preview = { vehicle = nil, cam = nil, point = nil, model = nil, angle = 0.0, height = 0.0, zoom = 1.0, token = 0 }
 local function clearPreview()
     preview.token = preview.token + 1
     if preview.vehicle and DoesEntityExist(preview.vehicle) then DeleteEntity(preview.vehicle) end
@@ -54,10 +55,10 @@ local function placeCamera()
     if not preview.cam or not v or not DoesEntityExist(v) then return end
     local minDim, maxDim = GetModelDimensions(GetEntityModel(v))
     local size = math.max(maxDim.x - minDim.x, maxDim.y - minDim.y)
-    local dist = math.max(4.8, size * 1.2)
+    local dist = math.max(4.8, size * 1.2) * preview.zoom
     local c = GetEntityCoords(v)
     local a = math.rad(preview.angle)
-    local cx, cy, cz = c.x + math.cos(a) * dist, c.y + math.sin(a) * dist, c.z + 0.9 + size * 0.06
+    local cx, cy, cz = c.x + math.cos(a) * dist, c.y + math.sin(a) * dist, c.z + 0.9 + size * 0.06 + preview.height
     -- Se apunta un poco a la derecha del coche para que quede a la izquierda de la pantalla (el catalogo va a la derecha).
     local dx, dy = c.x - cx, c.y - cy
     local len = math.sqrt(dx * dx + dy * dy); dx, dy = dx / len, dy / len
@@ -92,15 +93,14 @@ local function showPreview(model, color)
         end
         if color then SetVehicleColours(preview.vehicle, color, color) end
         if not preview.cam then
-            preview.angle = (point.h or 0.0) + 60.0
+            preview.angle, preview.height, preview.zoom = (point.h or 0.0) + 60.0, 0.0, 1.0
             preview.cam = CreateCam('DEFAULT_SCRIPTED_CAMERA', true)
             SetCamFov(preview.cam, 45.0)
             placeCamera()
             RenderScriptCams(true, true, 600, true, false)
             CreateThread(function()
                 while preview.cam do
-                    preview.angle = (preview.angle + 0.15) % 360.0
-                    placeCamera()
+                    placeCamera() -- sin giro automatico: solo se mueve cuando el jugador arrastra
                     HideHudAndRadarThisFrame()
                     Wait(0)
                 end
@@ -108,6 +108,17 @@ local function showPreview(model, color)
         end
     end)
 end
+-- Camara de la vista previa movida por el jugador desde la NUI (arrastrar y rueda).
+RegisterNUICallback('dealerCamera', function(d, cb)
+    cb({})
+    if not preview.cam or type(d) ~= 'table' then return end
+    local dx, dy, wheel = tonumber(d.dx) or 0, tonumber(d.dy) or 0, tonumber(d.wheel) or 0
+    if dx ~= dx or dy ~= dy or wheel ~= wheel then return end -- NaN
+    preview.angle = (preview.angle - math.max(-200, math.min(200, dx)) * 0.35) % 360.0
+    preview.height = math.max(-0.6, math.min(3.5, preview.height + math.max(-200, math.min(200, dy)) * 0.015))
+    if wheel ~= 0 then preview.zoom = math.max(0.55, math.min(1.8, preview.zoom + (wheel > 0 and 0.08 or -0.08))) end
+    placeCamera()
+end)
 RegisterNUICallback('dealerPreview', function(d, cb)
     cb({})
     if open and type(d) == 'table' then showPreview(d.model, math.tointeger(tonumber(d.color))) end

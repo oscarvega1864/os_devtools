@@ -64,3 +64,6 @@
 .biz .dealer-row{cursor:pointer;border-radius:8px;padding-left:8px;padding-right:8px}
 .biz .dealer-row:hover{background:rgba(255,255,255,.04)}
 .biz .dealer-row.sel{background:rgba(127,201,142,.1);box-shadow:inset 3px 0 0 #7fc98e}
+
+.dealer-drag{position:fixed;inset:0;cursor:grab;background:transparent}.dealer-drag.grab{cursor:grabbing}.dealer-drag.hidden{display:none}
+.dealer-drag span{position:absolute;left:2vw;bottom:3vh;padding:8px 12px;border-radius:8px;background:rgba(13,17,20,.75);color:#d8e1db;font:13px Arial,sans-serif;pointer-events:none}

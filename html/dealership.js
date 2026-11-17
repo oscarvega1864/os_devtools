@@ -3,7 +3,15 @@
   const res=typeof GetParentResourceName==='function'?GetParentResourceName():'os_devtools';
   const post=(n,b={})=>fetch(`https://${res}/${n}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).catch(()=>{});
   const el=(t,c,x)=>{const n=document.createElement(t);if(c)n.className=c;if(x!=null)n.textContent=x;return n;};
+  // Zona libre de la pantalla para mover la camara de la vista previa (arrastrar: girar y altura; rueda: zoom).
+  const drag=document.createElement('div');drag.className='dealer-drag hidden';drag.append(Object.assign(document.createElement('span'),{textContent:'Arrastra para girar la cámara · arriba y abajo cambia la altura · rueda para acercar'}));document.body.append(drag);
   const root=document.createElement('section');root.className='biz hidden';root.setAttribute('aria-label','Concesionario');document.body.append(root);
+  let dragging=null,pending={dx:0,dy:0},sending=false;
+  const flush=()=>{if(sending||(!pending.dx&&!pending.dy))return;sending=true;const b=pending;pending={dx:0,dy:0};post('dealerCamera',b).finally(()=>{sending=false;flush();});};
+  drag.addEventListener('pointerdown',e=>{dragging={x:e.clientX,y:e.clientY};drag.setPointerCapture(e.pointerId);drag.classList.add('grab');});
+  drag.addEventListener('pointermove',e=>{if(!dragging)return;pending.dx+=e.clientX-dragging.x;pending.dy+=e.clientY-dragging.y;dragging={x:e.clientX,y:e.clientY};flush();});
+  const stop=()=>{dragging=null;drag.classList.remove('grab');};drag.addEventListener('pointerup',stop);drag.addEventListener('pointercancel',stop);
+  drag.addEventListener('wheel',e=>{e.preventDefault();post('dealerCamera',{wheel:e.deltaY<0?1:-1});},{passive:false});
   // Colores de la paleta de GTA (aproximados) para la muestra.
   const SWATCH={0:'#0d1116',1:'#1c1d21',4:'#545b62',27:'#c00e1a',38:'#f78616',55:'#4d8b3e',64:'#47578f',88:'#ffcf20',111:'#ffffff',112:'#c1c1c1'};
   let data=null,color=null,msg=null,pick=null,account='cash';
@@ -12,7 +20,7 @@
   const money=n=>'$'+Number(n||0).toLocaleString('es-ES');
   function render(){
     root.replaceChildren();if(!data)return;
-    root.classList.toggle('side',!!data.preview);
+    root.classList.toggle('side',!!data.preview);drag.classList.toggle('hidden',!data.preview);
     const head=el('div','biz-head');const t=el('div');t.append(el('h1',null,data.label),el('p',null,'Toca un vehículo para verlo y elige el color. Sale a tu nombre, con su llave, en el punto de entrega.'));
     const x=el('button',null,'ESC ×');x.addEventListener('click',close);head.append(t,x);root.append(head);
     const opts=el('div','biz-summary');
@@ -53,11 +61,11 @@
     const ab=el('button','primary','Añadir');ab.addEventListener('click',()=>act('add',m.value.trim(),l.value.trim(),Number(p.value)));add.append(m,l,p,ab);cat.append(add);
     root.append(cat);root.append(el('div','biz-msg'+(adminMsg?.kind?' '+adminMsg.kind:''),adminMsg?.text||''));
   }
-  function close(){root.classList.add('hidden');root.classList.remove('side');data=null;adminData=null;pick=null;post('dealerClose');}
+  function close(){root.classList.add('hidden');root.classList.remove('side');drag.classList.add('hidden');data=null;adminData=null;pick=null;post('dealerClose');}
   window.addEventListener('message',e=>{const m=e.data;if(!m||typeof m!=='object')return;
     if(m.action==='dealer'){data=m.data;color=(data.colors||[])[0]??0;msg=null;account='cash';pick=(data.catalog||[])[0]?.model||null;root.classList.remove('hidden');render();preview();}
     else if(m.action==='dealerPreview'&&data&&m.ok===false){msg={text:'Ese modelo no está instalado en el servidor.',kind:'error'};render();}
-    else if(m.action==='dealerAdmin'){adminData=m.data;data=null;adminMsg=m.message?{text:m.message,kind:m.kind}:null;root.classList.remove('hidden');renderAdmin();}
+    else if(m.action==='dealerAdmin'){adminData=m.data;data=null;drag.classList.add('hidden');adminMsg=m.message?{text:m.message,kind:m.kind}:null;root.classList.remove('hidden');renderAdmin();}
     else if(m.action==='dealerResult'&&data){msg={text:m.text||'',kind:m.ok?'success':'error'};render();}
   });
   window.addEventListener('keydown',e=>{if(e.key==='Escape'&&(data||adminData))close();});
