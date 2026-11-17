@@ -663,7 +663,8 @@ function setcar.livery(src,args)
 end
 RegisterNetEvent('osdev:setcarLivery',function(netId,index,kind)
   local src=source
-  if not admin(src,'osdev.assets.vehicles') or not integer(index) or index<0 or index>255 or (kind~='native' and kind~='mod48') then return end
+  index=math.tointeger(tonumber(index))
+  if not admin(src,'osdev.assets.vehicles') or not index or index<0 or index>255 or (kind~='native' and kind~='mod48') then return end
   local entity=NetworkGetEntityFromNetworkId(tonumber(netId) or 0)
   if not entity or entity==0 or not DoesEntityExist(entity) then return end
   local id,record=recordByPlate(plateText(entity))
