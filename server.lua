@@ -1498,3 +1498,90 @@ RegisterCommand('puntotrabajo',function(src,args)
   for _,p in ipairs(GetPlayers()) do if OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(tonumber(p)) end end
 end,false)
 AddEventHandler('playerDropped',function() OSDevtools.JobView[source]=nil;OSDevtools.JobInvites[source]=nil end)
+
+-- Armarios y conjuntos de ropa ---------------------------------------------------------------------------------
+-- Armarios: puntos dentro de propiedades (/armario <idPropiedad> donde estas; /armario borrar quita el cercano). Junto
+-- a uno, E abre el armario si llevas la llave de esa propiedad (o tienes osdev.assets.properties). En el armario se
+-- cambia la ropa (disenador en modo ropa) y se guardan conjuntos por personaje (hasta MAX_OUTFITS).
+local MAX_OUTFITS, MAX_WARDROBES, WARDROBE_REACH = 10, 200, 3.0
+local function loadJson(file) local ok,data=pcall(json.decode,LoadResourceFile(RESOURCE,'data/'..file) or '{}');return ok and type(data)=='table' and data or {} end
+local wardrobes, outfits = loadJson('wardrobes.json'), loadJson('outfits.json') -- id -> punto; alias -> lista
+local function saveWardrobes() SaveResourceFile(RESOURCE,'data/wardrobes.json',json.encode(wardrobes),-1) end
+local function saveOutfits() SaveResourceFile(RESOURCE,'data/outfits.json',json.encode(outfits),-1) end
+local function wardrobeList()
+  local list={};for id,w in pairs(wardrobes) do list[#list+1]={id=id,x=w.x,y=w.y,z=w.z,bucket=w.bucket} end
+  table.sort(list,function(a,b) return a.id<b.id end);return list
+end
+local function pushWardrobes(target) TriggerClientEvent('osdev:wardrobes',target or -1,wardrobeList()) end
+RegisterNetEvent('osdev:wardrobes:request',function() pushWardrobes(source) end)
+
+RegisterCommand('armario',function(src,args)
+  if src==0 then return out(src,'Usalo desde el juego: el armario se pone donde estas.') end
+  if not needAdmin(src,'osdev.assets.properties') then return end
+  local pos=getCoords(src);if not pos then return out(src,'Posicion no disponible (bucket no permitido).','error') end
+  if args[1]=='borrar' then
+    local best,dist
+    for id,w in pairs(wardrobes) do
+      local d=math.sqrt((w.x-pos.x)^2+(w.y-pos.y)^2+(w.z-pos.z)^2)
+      if w.bucket==pos.bucket and d<=WARDROBE_REACH and (not dist or d<dist) then best,dist=id,d end
+    end
+    if not best then return out(src,'No hay ningun armario a menos de 3 m.','warning') end
+    local property=wardrobes[best].property;wardrobes[best]=nil;saveWardrobes();pushWardrobes()
+    return out(src,('Armario de la propiedad #%s borrado.'):format(tostring(property)),'success')
+  end
+  local id=positive(args[1])
+  if not id or not state.properties[tostring(id)] then return out(src,'Uso: /armario <idPropiedad> (donde estas) | /armario borrar (el mas cercano)') end
+  local count=0;for _ in pairs(wardrobes) do count=count+1 end
+  if count>=MAX_WARDROBES then return out(src,'Demasiados armarios.','error') end
+  local key;local n=count+1;repeat key='w'..n;n=n+1 until not wardrobes[key]
+  wardrobes[key]={property=id,x=math.floor(pos.x*100+0.5)/100,y=math.floor(pos.y*100+0.5)/100,z=math.floor(pos.z*100+0.5)/100,bucket=pos.bucket}
+  saveWardrobes();pushWardrobes()
+  out(src,('Armario anadido a la propiedad #%d aqui. Quien tenga su llave lo abre con E.'):format(id),'success')
+end,false)
+
+-- Conjunto: { name, sex, clothes = { clave = { d, t } }, props = { clave = { d, t } } } (claves del disenador).
+local OUTFIT_CLOTHES={top=true,undershirt=true,arms=true,legs=true,shoes=true,mask=true,bag=true,accessory=true}
+local OUTFIT_PROPS={hat=true,glasses=true,watch=true,bracelet=true}
+local function cleanPart(input,keys,minimum)
+  local result={}
+  for key in pairs(keys) do
+    local v=type(input)=='table' and input[key]
+    local d=type(v)=='table' and math.tointeger(tonumber(v.d)) or nil
+    local t=type(v)=='table' and math.tointeger(tonumber(v.t)) or nil
+    if d and t and d>=minimum and d<=4095 and t>=0 and t<=255 then result[key]={d=d,t=t} end
+  end
+  return result
+end
+local function outfitsOf(alias) local list=outfits[alias];return type(list)=='table' and list or {} end
+local function sendOutfits(src,alias) TriggerClientEvent('osdev:outfits:list',src,outfitsOf(alias)) end
+RegisterNetEvent('osdev:wardrobe:use',function(id)
+  local src=source;local alias=characterFor(src)
+  local w=type(id)=='string' and wardrobes[id]
+  if not alias or not w then return end
+  local pos=getCoords(src)
+  if not pos or pos.bucket~=w.bucket or math.sqrt((w.x-pos.x)^2+(w.y-pos.y)^2+(w.z-pos.z)^2)>WARDROBE_REACH then return out(src,'Acercate al armario.','warning') end
+  if not holdsKey(src,'properties',w.property) and not admin(src,'osdev.assets.properties') then return out(src,'Necesitas la llave de esta propiedad para usar su armario.','error') end
+  TriggerClientEvent('osdev:wardrobe:open',src,outfitsOf(alias))
+end)
+RegisterNetEvent('osdev:outfits:save',function(data)
+  local src=source;local alias=characterFor(src);if not alias or type(data)~='table' then return end
+  local name=type(data.name)=='string' and data.name:gsub('[%c<>]',''):gsub('^%s+',''):gsub('%s+$',''):sub(1,32) or ''
+  if name=='' then return out(src,'Pon un nombre al conjunto.','warning') end
+  local list=outfitsOf(alias)
+  local outfit={name=name,sex=data.sex=='female' and 'female' or 'male',clothes=cleanPart(data.clothes,OUTFIT_CLOTHES,0),props=cleanPart(data.props,OUTFIT_PROPS,-1)}
+  local replaced=false
+  for i,o in ipairs(list) do if o.name==name then list[i]=outfit;replaced=true end end
+  if not replaced then
+    if #list>=MAX_OUTFITS then return out(src,('Ya tienes %d conjuntos: borra alguno.'):format(MAX_OUTFITS),'warning') end
+    list[#list+1]=outfit
+  end
+  outfits[alias]=list;saveOutfits();sendOutfits(src,alias)
+  out(src,(replaced and 'Conjunto "%s" actualizado.' or 'Conjunto "%s" guardado.'):format(name),'success')
+end)
+RegisterNetEvent('osdev:outfits:delete',function(index)
+  local src=source;local alias=characterFor(src);index=math.tointeger(tonumber(index))
+  local list=outfitsOf(alias)
+  if not alias or not index or not list[index] then return end
+  local name=list[index].name;table.remove(list,index);outfits[alias]=list;saveOutfits();sendOutfits(src,alias)
+  out(src,('Conjunto "%s" borrado.'):format(name),'info')
+end)

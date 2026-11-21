@@ -3,9 +3,16 @@
 -- la ruta normal (osdev:saveAppearance), que el servidor valida y persiste.
 local Appearance=OSDevtools.Appearance
 local MALE,FEMALE=GetHashKey('mp_m_freemode_01'),GetHashKey('mp_f_freemode_01')
-local CLOTHES={top=11,undershirt=8,arms=3,legs=4,shoes=6}
-local PROPS={hat=0,glasses=1}
-local view={open=false,cam=nil,mode='body',heading=0.0,baseHeading=0.0,state=nil}
+local CLOTHES={top=11,undershirt=8,arms=3,legs=4,shoes=6,mask=1,bag=5,accessory=7}
+local PROPS={hat=0,glasses=1,watch=6,bracelet=7}
+-- wardrobe: abierto desde un armario (solo ropa y conjuntos); original: ropa con la que se entro (Cancelar).
+local view={open=false,cam=nil,mode='body',heading=0.0,baseHeading=0.0,state=nil,wardrobe=false,original=nil}
+local outfits={} -- conjuntos del personaje (los manda el servidor)
+local function outfitSummary()
+    local list={}
+    for i,o in ipairs(outfits) do list[#list+1]={index=i,name=o.name,sex=o.sex,fits=view.state and o.sex==view.state.sex or false} end
+    return list
+end
 
 local function int(value,minimum,maximum,fallback)
     value=math.tointeger(tonumber(value)) or fallback
@@ -153,17 +160,21 @@ end
 
 local function payload() local ped=PlayerPedId();return {state=view.state,limits=limits(ped,view.state)} end
 
-local function open()
+local function open(mode)
     if view.open then return end
     local ped=PlayerPedId()
     if IsEntityDead(ped) then return end
+    local model=GetEntityModel(ped)
+    -- Armario: solo ropa; un modelo que no es freemode no tiene ropa por piezas.
+    if mode=='wardrobe' and model~=MALE and model~=FEMALE then return OSDevtools.Notify('Tu personaje no usa un modelo con ropa por piezas.','warning') end
     view.open=true;view.mode='body';view.heading=0.0;view.baseHeading=GetEntityHeading(ped)
+    view.wardrobe=mode=='wardrobe'
     Appearance.designing=true
     -- Un modelo que no es freemode no tiene cabeza editable: se parte del freemode masculino.
-    local model=GetEntityModel(ped)
     if model~=MALE and model~=FEMALE then setSex('male');ped=PlayerPedId() end
     hold(ped)
     view.state=read(ped)
+    view.original=view.wardrobe and read(ped) or nil
     apply(ped,view.state)
     placeCamera();DisplayRadar(false)
     CreateThread(function()
@@ -174,12 +185,13 @@ local function open()
         end
     end)
     local data=payload();data.action='creator';data.open=true
+    data.wardrobe=view.wardrobe;data.outfits=view.wardrobe and outfitSummary() or nil
     SendNUIMessage(data)
     SetNuiFocus(true,true)
 end
 local function close()
     if not view.open then return end
-    view.open=false;Appearance.designing=false
+    view.open=false;view.wardrobe=false;view.original=nil;Appearance.designing=false
     SetNuiFocus(false,false)
     SendNUIMessage({action='creator',open=false})
     if view.cam then RenderScriptCams(false,true,500,true,true);DestroyCam(view.cam,false);view.cam=nil end
@@ -191,6 +203,13 @@ OSDevtools.Creator={open=open,close=close}
 
 RegisterNUICallback('creatorApply',function(data,cb)
     if not view.open or type(data)~='table' then return cb({}) end
+    -- En el armario solo se cambia la ropa (ni sexo, ni cara, ni pelo).
+    if view.wardrobe then
+        local ped=PlayerPedId()
+        view.state=sanitize(ped,{clothes=data.clothes,props=data.props},view.state)
+        apply(ped,view.state)
+        return cb(payload())
+    end
     local sex=data.sex=='female' and 'female' or 'male'
     if sex~=view.state.sex then
         if not setSex(sex) then return cb({error='No se pudo cargar el modelo.'}) end
@@ -227,6 +246,76 @@ RegisterNUICallback('creatorFinish',function(_,cb)
     Appearance.locked=false
     Appearance.last=Appearance.signature(data)
     TriggerServerEvent('osdev:saveAppearance',data,true)
+end)
+
+-- Armario: Cancelar deja la ropa con la que se entro; los conjuntos los guarda el servidor por personaje.
+RegisterNUICallback('creatorCancel',function(_,cb)
+    cb({})
+    if not view.open then return end
+    if view.wardrobe and view.original then
+        local ped=PlayerPedId()
+        SetEntityHeading(ped,view.baseHeading)
+        apply(ped,view.original)
+    end
+    close()
+end)
+RegisterNUICallback('wardrobeWear',function(data,cb)
+    local outfit=view.open and view.wardrobe and type(data)=='table' and outfits[math.tointeger(tonumber(data.index)) or 0]
+    if not outfit then return cb({error='Conjunto no encontrado.'}) end
+    if outfit.sex~=view.state.sex then return cb({error='Ese conjunto es de otro modelo (hombre / mujer).'}) end
+    local ped=PlayerPedId()
+    -- Las prendas que no guarda el conjunto se quedan como estan.
+    view.state=sanitize(ped,{clothes=outfit.clothes,props=outfit.props},view.state)
+    apply(ped,view.state)
+    cb(payload())
+end)
+RegisterNUICallback('wardrobeSave',function(data,cb)
+    cb({})
+    if not view.open or not view.wardrobe or type(data)~='table' then return end
+    TriggerServerEvent('osdev:outfits:save',{name=tostring(data.name or ''),sex=view.state.sex,clothes=view.state.clothes,props=view.state.props})
+end)
+RegisterNUICallback('wardrobeDelete',function(data,cb)
+    cb({})
+    if view.open and view.wardrobe and type(data)=='table' then TriggerServerEvent('osdev:outfits:delete',math.tointeger(tonumber(data.index))) end
+end)
+RegisterNetEvent('osdev:outfits:list',function(list)
+    if source~=65535 or type(list)~='table' then return end
+    outfits=list
+    if view.open and view.wardrobe then SendNUIMessage({action='wardrobeOutfits',outfits=outfitSummary()}) end
+end)
+RegisterNetEvent('osdev:wardrobe:open',function(list)
+    if source~=65535 then return end
+    outfits=type(list)=='table' and list or {}
+    if Appearance.spawning or IsPedInAnyVehicle(PlayerPedId(),false) then return end
+    open('wardrobe')
+end)
+
+-- Puntos de armario (los manda el servidor): marca cerca y E para abrir; el servidor comprueba llave y distancia.
+local wardrobePoints={}
+RegisterNetEvent('osdev:wardrobes',function(list) if source==65535 and type(list)=='table' then wardrobePoints=list end end)
+CreateThread(function()
+    TriggerServerEvent('osdev:wardrobes:request')
+    local lastUse=0
+    while true do
+        local sleep=1000
+        if not view.open and #wardrobePoints>0 then
+            local ped=PlayerPedId();local p=GetEntityCoords(ped)
+            local best,dist
+            for _,w in ipairs(wardrobePoints) do
+                local d=#(p-vector3(w.x,w.y,w.z))
+                if d<15.0 and (not dist or d<dist) then best,dist=w,d end
+            end
+            if best then
+                sleep=0
+                DrawMarker(2,best.x,best.y,best.z,0.0,0.0,0.0,0.0,180.0,0.0,0.25,0.25,0.25,127,201,142,170,true,true,2,false,nil,nil,false)
+                if dist<1.5 then
+                    BeginTextCommandDisplayHelp('STRING');AddTextComponentSubstringPlayerName('~INPUT_CONTEXT~ Abrir el armario');EndTextCommandDisplayHelp(0,false,false,-1)
+                    if IsControlJustPressed(0,38) and GetGameTimer()-lastUse>1500 then lastUse=GetGameTimer();TriggerServerEvent('osdev:wardrobe:use',best.id) end
+                end
+            end
+        end
+        Wait(sleep)
+    end
 end)
 
 -- Aparicion con context.design: se abre cuando el servidor la acepta y la aparicion termina.

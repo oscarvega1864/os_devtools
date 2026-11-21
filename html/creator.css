@@ -41,3 +41,8 @@ body.designing .hud{display:none}
 .cr-hint{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
 .cr-rotate{width:200px}
 @media(max-width:1100px){.cr-dock{transform:translateX(-50%);left:30%}}
+
+/* Armario: conjuntos guardados */
+.cr-outfit-new{display:flex;gap:8px}.cr-outfit-new input{flex:1;min-width:0;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.35);color:#e8eee9;font:inherit}
+.cr-outfit{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)}.cr-outfit span{flex:1}
+.cr-note{opacity:.8;font-size:13px;margin:8px 0 0}

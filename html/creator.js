@@ -8,7 +8,12 @@
     'Pómulos: altura','Pómulos: ancho','Mejillas','Ojos: apertura','Labios: grosor','Mandíbula: ancho','Mandíbula: forma','Mentón: altura',
     'Mentón: longitud','Mentón: ancho','Mentón: hoyuelo','Cuello: grosor'];
   const TABS=[['heritage','Herencia'],['face','Rasgos'],['hair','Pelo'],['clothes','Ropa']];
-  let state=null,limits=null,tab='heritage',sending=false,queued=false,camera='body',heading=0,open=false;
+  // Armario (desde una propiedad): solo ropa y conjuntos guardados.
+  const WARDROBE_TABS=[['clothes','Ropa'],['outfits','Conjuntos']];
+  const CLOTHES=[['top','Chaqueta / camiseta'],['undershirt','Prenda interior'],['arms','Brazos / guantes'],['legs','Pantalón'],['shoes','Calzado'],
+    ['mask','Máscara'],['bag','Mochila / bolsa'],['accessory','Collar / corbata']];
+  const PROPS=[['hat','Sombrero'],['glasses','Gafas'],['watch','Reloj'],['bracelet','Pulsera']];
+  let state=null,limits=null,tab='heritage',sending=false,queued=false,camera='body',heading=0,open=false,wardrobe=false,outfits=[],note='';
 
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;};
   const get=(path)=>path.split('.').reduce((o,k)=>o==null?o:o[k],state);
@@ -71,10 +76,26 @@
       const h=section('Pelo');add(h,stepper('Peinado','hair.style',0));add(h,stepper('Color','hair.color',0));add(h,stepper('Mechas','hair.highlight',0));body.append(h);
       const b=section('Cejas');add(b,stepper('Forma','eyebrows.style',0));add(b,slider('Intensidad','eyebrows.opacity',0,1,0.01,pct));add(b,stepper('Color','eyebrows.color',0));body.append(b);
       if(state.sex==='male'){const f=section('Barba');add(f,stepper('Estilo','beard.style',-1,{none:'Sin barba'}));add(f,slider('Intensidad','beard.opacity',0,1,0.01,pct));add(f,stepper('Color','beard.color',0));body.append(f);}
+    }else if(tab==='outfits'){
+      const s=section('Guardar lo que llevas');const row=el('div','cr-outfit-new');
+      const name=el('input');name.maxLength=32;name.placeholder='Nombre del conjunto (p. ej. Trabajo)';
+      const save=el('button','btn primary','Guardar');save.type='button';
+      save.addEventListener('click',()=>{const value=name.value.trim();if(!value){note='Pon un nombre al conjunto.';build();return;}post('wardrobeSave',{name:value});name.value='';});
+      row.append(name,save);s.append(row);body.append(s);
+      const l=section(`Tus conjuntos (${outfits.length}/10)`);
+      if(!outfits.length)l.append(el('p','cr-note','Aún no tienes conjuntos guardados.'));
+      outfits.forEach(o=>{const item=el('div','cr-outfit');item.append(el('span',null,o.name+(o.fits?'':' · otro modelo')));
+        const wear=el('button','btn','Ponérmelo');wear.type='button';wear.disabled=!o.fits;
+        wear.addEventListener('click',()=>post('wardrobeWear',{index:o.index}).then(res=>{if(res&&res.state){state=res.state;limits=res.limits;note=`Te has puesto "${o.name}".`;}else note=(res&&res.error)||'No se pudo.';build();}));
+        const del=el('button','btn ghost','Borrar');del.type='button';
+        del.addEventListener('click',()=>{if(del.dataset.sure){post('wardrobeDelete',{index:o.index});}else{del.dataset.sure='1';del.textContent='¿Seguro?';}});
+        item.append(wear,del);l.append(item);});
+      body.append(l);
+      if(note)body.append(el('p','cr-note',note));
     }else{
-      [['top','Chaqueta / camiseta'],['undershirt','Prenda interior'],['arms','Brazos / guantes'],['legs','Pantalón'],['shoes','Calzado']].forEach(([key,label])=>{
+      CLOTHES.forEach(([key,label])=>{if(!state.clothes[key])return;
         const s=section(label);add(s,stepper('Modelo',`clothes.${key}.d`,0));add(s,stepper('Variante',`clothes.${key}.t`,0));body.append(s);});
-      [['hat','Sombrero'],['glasses','Gafas']].forEach(([key,label])=>{
+      PROPS.forEach(([key,label])=>{if(!state.props[key])return;
         const s=section(label);add(s,stepper('Modelo',`props.${key}.d`,-1,{none:'Ninguno'}));add(s,stepper('Variante',`props.${key}.t`,0));body.append(s);});
     }
     refresh();
@@ -98,14 +119,15 @@
   function layout(){
     root.replaceChildren();
     const panel=el('div','cr-panel');
-    const head=el('header','cr-head');head.append(el('div','cr-brand','OSCAR · CREADOR'),el('h2',null,'Diseña tu personaje'));
-    const sex=el('div','cr-sex');[['male','Hombre'],['female','Mujer']].forEach(([v,l])=>{const b=el('button',null,l);b.type='button';b.dataset.sex=v;
+    const head=el('header','cr-head');head.append(el('div','cr-brand',wardrobe?'OSCAR · ARMARIO':'OSCAR · CREADOR'),el('h2',null,wardrobe?'Cámbiate de ropa':'Diseña tu personaje'));
+    const sex=el('div','cr-sex');if(wardrobe)sex.style.display='none';[['male','Hombre'],['female','Mujer']].forEach(([v,l])=>{const b=el('button',null,l);b.type='button';b.dataset.sex=v;
       b.addEventListener('click',()=>{if(state.sex===v)return;state.sex=v;send();build();});sex.append(b);});
-    const tabs=el('nav','cr-tabs');TABS.forEach(([id,label])=>{const b=el('button',null,label);b.type='button';b.dataset.tab=id;b.addEventListener('click',()=>{tab=id;build();});tabs.append(b);});
+    const tabs=el('nav','cr-tabs');(wardrobe?WARDROBE_TABS:TABS).forEach(([id,label])=>{const b=el('button',null,label);b.type='button';b.dataset.tab=id;b.addEventListener('click',()=>{tab=id;build();});tabs.append(b);});
     head.append(sex,tabs);
     const body=el('div','cr-body');
-    const foot=el('footer','cr-foot');const rnd=el('button','btn ghost','Aleatorio');rnd.type='button';rnd.addEventListener('click',randomize);
-    const done=el('button','btn primary','Terminar');done.type='button';done.addEventListener('click',()=>{done.disabled=true;post('creatorFinish');});
+    const foot=el('footer','cr-foot');const rnd=el('button','btn ghost',wardrobe?'Cancelar':'Aleatorio');rnd.type='button';
+    rnd.addEventListener('click',()=>{if(wardrobe){rnd.disabled=true;post('creatorCancel');}else randomize();});
+    const done=el('button','btn primary',wardrobe?'Guardar y salir':'Terminar');done.type='button';done.addEventListener('click',()=>{done.disabled=true;post('creatorFinish');});
     foot.append(rnd,done);panel.append(head,body,foot);
     const dock=el('div','cr-dock');const views=el('div','cr-views');
     [['face','Cara'],['body','Cuerpo']].forEach(([v,l])=>{const b=el('button',null,l);b.type='button';b.dataset.view=v;b.classList.toggle('on',v===camera);
@@ -116,9 +138,12 @@
     root.append(panel,dock);
   }
   window.addEventListener('message',e=>{
-    const d=e.data;if(!d||d.action!=='creator')return;
+    const d=e.data;if(!d)return;
+    if(d.action==='wardrobeOutfits'){outfits=Array.isArray(d.outfits)?d.outfits:[];note='';if(open&&tab==='outfits')build();return;}
+    if(d.action!=='creator')return;
     if(!d.open){open=false;root.classList.add('hidden');document.body.classList.remove('designing');return;}
-    state=d.state;limits=d.limits;tab='heritage';camera='body';heading=0;open=true;
+    wardrobe=d.wardrobe===true;outfits=Array.isArray(d.outfits)?d.outfits:[];note='';
+    state=d.state;limits=d.limits;tab=wardrobe?'clothes':'heritage';camera='body';heading=0;open=true;
     layout();build();root.classList.remove('hidden');document.body.classList.add('designing');
   });
 })();
