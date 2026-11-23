@@ -1,6 +1,6 @@
 # Changelog
 
-## Sin publicar
+## 0.1.10 — Datos para el menú de inicio de os_hud
 
 - `GetCharacterStats` da más datos para el menú de inicio de os_hud: posición de propiedades y negocios, modelo, tipo
   y posición real de los vehículos en la calle, plantilla de los negocios, información del trabajo público (rangos,
