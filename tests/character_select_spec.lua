@@ -147,3 +147,14 @@ test('Weapons are saved per character, given back on spawn, ignored while switch
     -- Vaciar el equipo borra la lista guardada.
     net(c,'osdev:weapons',1,{});assert(c.snapshot().characters.oscar_vega.weapons==nil)
 end)
+
+test('The selector roster carries each own character appearance for the local preview, and nothing from other accounts',function()
+    local c=fixture();net(c,'osdev:requestCharacterSelect',1);net(c,'osdev:createOwnCharacter',1,'Ana','Lopez');ack(c,1)
+    local components={};for i=1,12 do components[i]={d=i,t=0,p=0} end
+    source=1;c.clock=c.clock+10000;c.net['osdev:saveAppearance']({model=1885233650,components=components,props={}},true)
+    c.command('personajes',1)
+    local payload=last(c,'osdev:characterSelect',1);local byAlias={}
+    for _,row in ipairs(payload.characters) do byAlias[row.alias]=row end
+    assert(byAlias.ana_lopez.appearance.model==1885233650 and byAlias.ana_lopez.appearance.components[3].d==3)
+    assert(byAlias.client_test==nil and not json.encode(payload):find('license',1,true))
+end)

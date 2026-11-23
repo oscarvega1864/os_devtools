@@ -1,61 +1,105 @@
-/* Selector de personaje. Paleta del HUD de Devtools; sin color-scheme en :root (ver NUI gotchas). */
-.selector{--bg:rgba(8,15,18,.86);--card:rgba(255,255,255,.035);--card-hi:rgba(116,219,159,.09);--line:rgba(154,189,171,.18);
-  --line-hi:rgba(116,219,159,.65);--text:#f1f6f3;--muted:#9fb8ad;--accent:#74db9f;--accent-ink:#06150d;--warn:#f0b35a;--danger:#ff7b72;
-  position:fixed;inset:0;display:flex;align-items:stretch;color:var(--text);font-family:"Segoe UI",Roboto,Arial,sans-serif;
-  background:linear-gradient(90deg,rgba(4,9,11,.92) 0%,rgba(4,9,11,.72) 34%,rgba(4,9,11,.08) 62%,rgba(4,9,11,0) 100%);
+/* Selector de personaje · tema puerta de embarque del LSIA (a juego con os_loadscreen).
+   Sin color-scheme en :root (ver NUI gotchas). Las reglas genericas del final (.btn, .avatar, .who,
+   .empty) tambien las usan otros paneles: no cambiarlas sin revisar creator/business. */
+.selector{--ink:#f3f1ea;--muted:#8c93a3;--line:rgba(255,255,255,.09);--sign:#ffc72c;--sign-ink:#141005;--paper:#f3f1ea;--paper-2:#e4dfd1;
+  --paper-ink:#16181d;--go:#53d98b;--warn:#ffb547;--stop:#ff6b6b;--panel:rgba(7,9,14,.86);
+  --sans:"Bahnschrift","Segoe UI",Roboto,Arial,sans-serif;--mono:"Bahnschrift","Consolas","Cascadia Mono",monospace;
+  position:fixed;inset:0;display:flex;align-items:stretch;color:var(--ink);font-family:var(--sans);
+  background:linear-gradient(90deg,rgba(5,7,11,.94) 0%,rgba(5,7,11,.82) 30%,rgba(5,7,11,.15) 52%,rgba(5,7,11,0) 70%);
   animation:sel-in .45s ease-out;user-select:none}
-.selector.switch{background:rgba(4,9,11,.55);backdrop-filter:blur(3px);align-items:center;justify-content:center}
+.selector.switch{background:rgba(5,7,11,.6);align-items:center;justify-content:center}
 .selector.hidden{display:none}
 body.selecting .hud{display:none}
 @keyframes sel-in{from{opacity:0}to{opacity:1}}
 @keyframes sel-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.sel-panel{width:min(470px,92vw);margin-left:5vw;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:4vh 0}
-.selector.switch .sel-panel{margin:0;padding:22px;max-height:88vh;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
-.sel-head{position:relative}
-.sel-brand{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:3px;color:var(--muted)}
-.sel-mark{width:9px;height:9px;border-radius:2px;background:var(--accent);box-shadow:0 0 12px rgba(116,219,159,.7)}
-.sel-head h1{margin:10px 0 4px;font-size:34px;font-weight:700;letter-spacing:-.5px;line-height:1.05}
-.sel-sub{margin:0;font-size:13px;color:var(--muted)}
-.sel-close{position:absolute;top:0;right:0;font:600 11px/1 inherit;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer}
-.sel-close:hover{color:var(--text);border-color:var(--muted)}
-.sel-list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding:2px 4px 2px 0;scrollbar-width:thin}
-.sel-list::-webkit-scrollbar{width:6px}.sel-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
-.card{position:relative;display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:12px 14px;background:var(--card);
-  border:1px solid var(--line);border-radius:11px;cursor:pointer;transition:background .15s,border-color .15s,transform .15s;animation:sel-rise .35s ease-out both}
-.card:hover{background:rgba(255,255,255,.06)}
-.card.selected{background:var(--card-hi);border-color:var(--line-hi);box-shadow:inset 3px 0 0 var(--accent)}
-.card.dead .avatar{filter:grayscale(1);opacity:.6}
+@keyframes sel-slide{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+
+.selector .sel-panel{width:min(560px,92vw);margin-left:4.5vw;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:4vh 0}
+.selector.switch .sel-panel{margin:0;padding:24px;max-height:90vh;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.selector .sel-head{position:relative}
+.selector .sel-brand{display:inline-flex;align-items:center;gap:10px;padding:6px 12px 6px 8px;border-radius:4px;background:var(--sign);color:var(--sign-ink);
+  font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase}
+.selector .sel-mark{width:20px;height:20px;border-radius:3px;background:var(--sign-ink);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z'/%3E%3C/svg%3E") center/16px no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z'/%3E%3C/svg%3E") center/16px no-repeat}
+.selector .sel-head h1{margin:14px 0 4px;font-size:40px;font-weight:700;letter-spacing:-.3px;line-height:1.02}
+.selector .sel-sub{margin:0;font-size:14px;color:var(--muted)}
+.selector .sel-close{position:absolute;top:0;right:0;font:600 11px/1 var(--sans);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:4px;padding:6px 8px;cursor:pointer}
+.selector .sel-close:hover{color:var(--ink);border-color:var(--muted)}
+
+.selector .sel-list{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow-y:auto;padding:4px 6px 4px 2px;scrollbar-width:thin}
+.selector .sel-list::-webkit-scrollbar{width:6px}.selector .sel-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+
+/* Tarjeta de embarque: cuerpo | perforacion | resguardo. La seleccionada pasa a "papel impreso". */
+.selector .pass{position:relative;display:grid;grid-template-columns:1fr 128px;border-radius:8px;background:#11141b;border:1px solid var(--line);
+  cursor:pointer;overflow:hidden;transition:transform .18s,background .18s,border-color .18s,box-shadow .18s;animation:sel-slide .4s ease-out both}
+.selector .pass:hover{border-color:rgba(255,199,44,.35);transform:translateX(3px)}
+.selector .pass.selected{background:linear-gradient(180deg,var(--paper),var(--paper-2));color:var(--paper-ink);border-color:transparent;
+  box-shadow:0 14px 34px rgba(0,0,0,.45),inset 5px 0 0 var(--sign);transform:translateX(8px)}
+.selector .pass-main{padding:14px 16px 14px 18px;min-width:0}
+.selector .pass-label{font-size:10px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted)}
+.selector .pass.selected .pass-label{color:#7a7f8c}
+.selector .pass-name{margin-top:2px;font-size:22px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.selector .pass-alias{margin-left:8px;font-family:Consolas,"Cascadia Mono",monospace;font-size:11px;font-weight:400;color:var(--muted)}
+.selector .pass-fields{margin-top:10px;display:grid;grid-template-columns:1.1fr 1.3fr .9fr;gap:12px}
+.selector .pass-fields .v{margin-top:3px;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.selector .stamps{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
+.selector .stamp{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:3px 7px;border-radius:3px;border:1.5px solid currentColor}
+.selector .stamp.last{color:var(--sign)}.selector .pass.selected .stamp.last{color:#9a7400}
+.selector .stamp.dead{color:var(--stop);transform:rotate(-2deg)}
+.selector .stamp.duty{color:var(--warn)}.selector .pass.selected .stamp.duty{color:#b26b00}
+.selector .pass-stub{position:relative;padding:14px 14px 12px 16px;border-left:2px dashed rgba(255,255,255,.14);display:flex;flex-direction:column;justify-content:space-between;gap:6px}
+.selector .pass.selected .pass-stub{border-left-color:rgba(22,24,29,.28)}
+.selector .pass-stub::before,.selector .pass-stub::after{content:"";position:absolute;left:-9px;width:16px;height:16px;border-radius:50%;background:#07090e}
+.selector .pass-stub::before{top:-9px}.selector .pass-stub::after{bottom:-9px}
+.selector .seat{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;color:var(--sign)}
+.selector .pass.selected .seat{color:var(--paper-ink)}
+.selector .cash{font-family:var(--mono);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.selector .bank{font-size:10.5px;color:var(--muted)}
+.selector .barcode{height:22px;margin-top:4px;opacity:.4;filter:invert(1)}
+.selector .pass.selected .barcode{opacity:.85;filter:none}
+.selector .pass.dead .pass-name{text-decoration:line-through;text-decoration-thickness:1px;text-decoration-color:rgba(255,107,107,.6)}
+
+.selector .sel-create{padding:16px;border:1px solid rgba(255,199,44,.45);border-radius:8px;background:rgba(255,199,44,.05);animation:sel-rise .25s ease-out}
+.selector .sel-create.hidden{display:none}
+.selector .sel-create-title{font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--sign);margin-bottom:12px}
+.selector .sel-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.selector .sel-fields label{display:flex;flex-direction:column;gap:5px;font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase}
+.selector .sel-fields input{font:600 15px/1.2 var(--sans);color:var(--ink);background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:5px;padding:10px 11px;outline:none;user-select:text}
+.selector .sel-fields input:focus{border-color:var(--sign);box-shadow:0 0 0 3px rgba(255,199,44,.15)}
+.selector .sel-create-foot{margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.selector .sel-alias{font-family:Consolas,"Cascadia Mono",monospace;font-size:11.5px;color:var(--muted)}
+.selector .sel-create-actions{display:flex;gap:8px}
+.selector .sel-mode{display:flex;gap:18px;margin:12px 0 6px;font-size:13px;color:#d3d6dd}.selector .sel-mode label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.selector .sel-xml{width:100%;min-height:120px;max-height:220px;resize:vertical;background:rgba(0,0,0,.4);color:#e9ebef;border:1px solid var(--line);border-radius:5px;padding:8px;font:12px Consolas,monospace;margin-bottom:6px}
+.selector .sel-xml.hidden{display:none}
+.selector .sel-message{min-height:18px;font-size:13px;color:var(--muted)}
+.selector .sel-message.error{color:var(--stop)}.selector .sel-message.ok{color:var(--go)}
+.selector .sel-foot{display:flex;align-items:center;gap:12px}
+.selector .sel-count{flex:1;font-size:11.5px;letter-spacing:.6px;color:var(--muted);text-align:center;text-transform:uppercase}
+.selector .btn{font-family:var(--sans);letter-spacing:.8px;text-transform:uppercase;border-radius:5px}
+.selector .btn.primary{min-width:170px;padding:14px 20px;font-size:14px;background:var(--sign);color:var(--sign-ink);box-shadow:0 8px 24px rgba(255,199,44,.22)}
+.selector .btn.primary:hover:not(:disabled){background:#ffd65e}
+.selector .btn.primary::after{content:"  \2192"}
+.selector.busy .sel-list,.selector.busy .sel-foot{opacity:.6;pointer-events:none}
+.selector .empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:8px;font-size:13px}
+
+/* Rotulo del personaje junto a la previsualizacion (solo al entrar). */
+.selector .sel-plate{position:absolute;right:5vw;bottom:7vh;text-align:right;pointer-events:none;animation:sel-rise .35s ease-out}
+.selector.switch .sel-plate{display:none}
+.selector .sel-plate.hidden{display:none}
+.selector .plate-kicker{display:inline-block;padding:4px 9px;border-radius:3px;background:var(--sign);color:var(--sign-ink);font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase}
+.selector .plate-name{margin-top:8px;font-size:clamp(34px,3.4vw,58px);font-weight:700;line-height:1;text-shadow:0 4px 24px rgba(0,0,0,.6)}
+.selector .plate-job{margin-top:6px;font-size:15px;letter-spacing:1px;text-transform:uppercase;color:#d9dce3;text-shadow:0 2px 12px rgba(0,0,0,.7)}
+@media(max-height:760px){.selector .sel-head h1{font-size:30px}.selector .sel-list{max-height:48vh}}
+
+/* --- Reglas genericas compartidas con otros paneles (no cambiar sin revisar creator/business) --- */
+.who{min-width:0}
 .avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:16px;letter-spacing:.5px;
   background:linear-gradient(145deg,#2a5c48,#173328);color:#dff7ea;border:1px solid rgba(116,219,159,.35)}
 .avatar.female{background:linear-gradient(145deg,#5c2a4f,#33172c);border-color:rgba(232,140,200,.35);color:#fbe3f3}
 .avatar.other{background:linear-gradient(145deg,#4a4f5c,#262a33);border-color:rgba(180,190,210,.3)}
-.who{min-width:0}
-.name{font-size:17px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.meta{margin-top:3px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.meta .alias{font-family:Consolas,"Cascadia Mono",monospace;font-size:11px;opacity:.85}
-.chips{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px}
-.chip{font-size:10.5px;font-weight:600;letter-spacing:.3px;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:#cfe0d8;border:1px solid rgba(255,255,255,.06)}
-.chip.last{background:rgba(116,219,159,.14);color:var(--accent);border-color:rgba(116,219,159,.3)}
-.chip.dead{background:rgba(255,123,114,.12);color:var(--danger);border-color:rgba(255,123,114,.3)}
-.chip.duty{background:rgba(240,179,90,.12);color:var(--warn);border-color:rgba(240,179,90,.3)}
-.money{text-align:right;font-variant-numeric:tabular-nums}
-.money .cash{font-size:15px;font-weight:700}.money .cash::before{content:"$";color:var(--accent);margin-right:2px}
-.money .bank{margin-top:3px;font-size:11px;color:var(--muted)}
 .empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:11px;font-size:13px}
-.sel-create{padding:14px;border:1px solid var(--line-hi);border-radius:11px;background:rgba(116,219,159,.06);animation:sel-rise .25s ease-out}
-.sel-create.hidden{display:none}
-.sel-create-title{font-size:13px;font-weight:700;letter-spacing:.4px;margin-bottom:10px}
-.sel-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.sel-fields label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.4px}
-.sel-fields input{font:500 14px/1.2 inherit;color:var(--text);background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:7px;padding:9px 10px;outline:none;user-select:text}
-.sel-fields input:focus{border-color:var(--line-hi);box-shadow:0 0 0 3px rgba(116,219,159,.15)}
-.sel-create-foot{margin-top:11px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.sel-alias{font-family:Consolas,"Cascadia Mono",monospace;font-size:11.5px;color:var(--muted)}
-.sel-create-actions{display:flex;gap:8px}
-.sel-message{min-height:18px;font-size:12.5px;color:var(--muted)}
-.sel-message.error{color:var(--danger)}.sel-message.ok{color:var(--accent)}
-.sel-foot{display:flex;align-items:center;gap:12px}
-.sel-count{flex:1;font-size:11.5px;color:var(--muted);text-align:center}
 .btn{font:650 13px/1 inherit;letter-spacing:.3px;color:var(--text);background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:8px;padding:11px 16px;cursor:pointer;transition:background .15s,opacity .15s,transform .1s}
 .btn:hover:not(:disabled){background:rgba(255,255,255,.14)}
 .btn:active:not(:disabled){transform:translateY(1px)}
@@ -64,10 +108,3 @@ body.selecting .hud{display:none}
 .btn.primary:hover:not(:disabled){background:#8be8b2}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.hidden{display:none}
-.selector.busy .sel-list,.selector.busy .sel-foot{opacity:.6;pointer-events:none}
-.sel-hint{font-size:11px;color:var(--muted);opacity:.75}
-@media(max-height:720px){.sel-head h1{font-size:27px}.sel-list{max-height:46vh}}
-
-.sel-mode{display:flex;gap:18px;margin:10px 0 6px;font-size:13px;color:#cfd8d3}.sel-mode label{display:flex;align-items:center;gap:6px;cursor:pointer}
-.sel-xml{width:100%;box-sizing:border-box;min-height:120px;max-height:220px;resize:vertical;background:rgba(0,0,0,.35);color:#e9efec;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:8px;font:12px Consolas,monospace;margin-bottom:6px}
-.sel-xml.hidden{display:none}

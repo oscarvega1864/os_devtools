@@ -2,6 +2,11 @@
 
 ## Sin publicar
 
+- **Selector de personaje con previsualización**: al entrar, el personaje marcado aparece de pie (ped local, solo lo ve
+  el jugador) en la salida de llegadas del LSIA con su aspecto guardado, con fundido al cambiar de tarjeta. La lista
+  incluye la apariencia de los personajes propios. Escena configurable en `SelectScene` (`config/spawn.lua`).
+- **Nuevo estilo del selector**: tarjetas de embarque (asiento, ocupación, último destino y vuelo, saldo y sellos de
+  último viaje, herido o de servicio) y rótulo con el nombre junto al personaje, a juego con la pantalla de carga.
 - **Arreglado**: el grupo de txAdmin al entrar de servicio no se aplicaba (orden lanzada dentro del comando del
   jugador); ahora se ejecuta en un hilo aparte. Test del servicio de staff con txAdmin.
 

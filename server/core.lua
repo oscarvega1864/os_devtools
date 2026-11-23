@@ -427,7 +427,9 @@ function OSDevtools.Core.new(options)
                 local seen=(c.lastLogoutPosition and c.lastLogoutPosition.at) or (p and (p.at or p.time)) or nil
                 rows[#rows+1]={alias=alias,characterId=c.id,cash=c.cash,bank=c.bank,job=c.job,rank=c.rank,duty=c.duty==true,
                     dead=c.life=='dead',active=alias==current,lastSeen=seen,
-                    position=p and {x=p.x,y=p.y,z=p.z} or nil,model=c.appearance and c.appearance.model or nil}
+                    position=p and {x=p.x,y=p.y,z=p.z} or nil,model=c.appearance and c.appearance.model or nil,
+                    -- Aspecto propio para la previsualizacion del selector (ped local en el cliente).
+                    appearance=c.appearance and u.copy(c.appearance) or nil}
             end
         end
         table.sort(rows,function(a,b)
