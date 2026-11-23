@@ -1,6 +1,6 @@
 # Changelog
 
-## Sin publicar
+## 0.1.13 — Selector con previsualización y borrar bienes
 
 - **Selector de personaje con previsualización**: al entrar, el personaje marcado aparece de pie (ped local, solo lo ve
   el jugador) en la salida de llegadas del LSIA con su aspecto guardado, con fundido al cambiar de tarjeta. La lista
