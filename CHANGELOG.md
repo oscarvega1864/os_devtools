@@ -1,5 +1,10 @@
 # Changelog
 
+## Sin publicar
+
+- Los avisos `[OSCAR AUTH]` de dar o quitar el grupo de txAdmin ya no salen en el chat de quien usa `/adminservicio`:
+  se escriben fuera del comando y solo llegan a la consola del servidor.
+
 ## 0.1.11 — Admins de txAdmin solo de servicio
 
 - El grupo `group.admin` de los admins de txAdmin solo se da **de servicio** (`/adminservicio` de os_admin) mientras

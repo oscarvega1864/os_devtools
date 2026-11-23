@@ -31,18 +31,21 @@ local function txGroup(source,on)
     if on and not txGranted[source] then
         txGranted[source]=true
         ExecuteCommand(('add_principal player.%d %s'):format(source,group))
-        -- Sin el ACE del recurso para add_principal, FiveM ignora el comando: se avisa con la linea que falta.
-        local check=IsPlayerAceAllowed(source,'osdev.admin')
-        if check==true or check==1 then
-            print(('[OSCAR AUTH] action=txadmin_group_added source=%d group=%s'):format(source,group))
-        else
-            print(('[OSCAR AUTH] ERROR: no se pudo dar %s a %d. Falta en server.cfg: add_ace resource.%s command.add_principal allow (y command.remove_principal).'):format(
-                group,source,GetCurrentResourceName()))
-        end
+        -- Los mensajes van fuera del comando que lo provoca (/adminservicio): si no, FiveM los muestra en el chat
+        -- de quien lo usa. Sin el ACE del recurso para add_principal, FiveM ignora el comando: se avisa en consola.
+        CreateThread(function()
+            local check=IsPlayerAceAllowed(source,'osdev.admin')
+            if check==true or check==1 then
+                print(('[OSCAR AUTH] action=txadmin_group_added source=%d group=%s'):format(source,group))
+            else
+                print(('[OSCAR AUTH] ERROR: no se pudo dar %s a %d. Falta en server.cfg: add_ace resource.%s command.add_principal allow (y command.remove_principal).'):format(
+                    group,source,GetCurrentResourceName()))
+            end
+        end)
     elseif not on and txGranted[source] then
         txGranted[source]=nil
         ExecuteCommand(('remove_principal player.%d %s'):format(source,group))
-        print(('[OSCAR AUTH] action=txadmin_group_removed source=%d group=%s'):format(source,group))
+        CreateThread(function() print(('[OSCAR AUTH] action=txadmin_group_removed source=%d group=%s'):format(source,group)) end)
     end
 end
 -- txAdmins: quien txAdmin dice que es admin. staffDuty: quien esta de servicio como staff (lo avisa os_admin).
