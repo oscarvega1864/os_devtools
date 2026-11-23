@@ -156,16 +156,28 @@ test('Client events cannot fake local txAdmin authentication or choose another i
 end)
 test('txAdmin admins join group.admin for their session only while txAdmin recognizes them',function()
     local c=fixture()
-    c.event('txAdmin:events:adminAuth','untrusted',{netid=2,isAdmin=true});assert(#c.executed==0)
-    c.auth(2);assert(c.executed[1]=='add_principal player.2 group.admin' and #c.executed==1)
-    c.auth(2);assert(#c.executed==1) -- sin duplicar
-    c.event('txAdmin:events:adminAuth','monitor',{netid=2,isAdmin=false});assert(c.executed[2]=='remove_principal player.2 group.admin')
-    c.auth(2);c.event('txAdmin:events:adminAuth','monitor',{netid=-1,isAdmin=false});assert(c.executed[4]=='remove_principal player.2 group.admin')
-    c.auth(2);source=2;for _,fn in ipairs(c.events.playerDropped) do fn() end;assert(c.executed[6]=='remove_principal player.2 group.admin')
-    c.event('txAdmin:events:adminAuth','monitor',{netid=9,isAdmin=true});assert(#c.executed==6) -- jugador inexistente
-    c.players[2].disconnected=nil;c.auth(2);assert(c.executed[7]=='add_principal player.2 group.admin')
-    c.event('txAdmin:events:adminsUpdated','monitor');assert(c.executed[8]=='remove_principal player.2 group.admin') -- cambio de admins
-    c.version='9.0.0';c.auth(2);assert(#c.executed==8) -- txAdmin no verificado: no se concede
+    -- Las ordenes ACE van en un hilo (fuera del comando que las provoca): se ejecutan los hilos nuevos tras cada paso.
+    local function step(fn) local mark=#c.threads;fn();for i=mark+1,#c.threads do coroutine.resume(c.threads[i]) end end
+    step(function() c.event('txAdmin:events:adminAuth','untrusted',{netid=2,isAdmin=true}) end);assert(#c.executed==0)
+    step(function() c.auth(2) end);assert(c.executed[1]=='add_principal player.2 group.admin' and #c.executed==1)
+    step(function() c.auth(2) end);assert(#c.executed==1) -- sin duplicar
+    step(function() c.event('txAdmin:events:adminAuth','monitor',{netid=2,isAdmin=false}) end);assert(c.executed[2]=='remove_principal player.2 group.admin')
+    step(function() c.auth(2) end);step(function() c.event('txAdmin:events:adminAuth','monitor',{netid=-1,isAdmin=false}) end);assert(c.executed[4]=='remove_principal player.2 group.admin')
+    step(function() c.auth(2) end);step(function() source=2;for _,fn in ipairs(c.events.playerDropped) do fn() end end);assert(c.executed[6]=='remove_principal player.2 group.admin')
+    step(function() c.event('txAdmin:events:adminAuth','monitor',{netid=9,isAdmin=true}) end);assert(#c.executed==6) -- jugador inexistente
+    c.players[2].disconnected=nil;step(function() c.auth(2) end);assert(c.executed[7]=='add_principal player.2 group.admin')
+    step(function() c.event('txAdmin:events:adminsUpdated','monitor') end);assert(c.executed[8]=='remove_principal player.2 group.admin') -- cambio de admins
+    c.version='9.0.0';step(function() c.auth(2) end);assert(#c.executed==8) -- txAdmin no verificado: no se concede
+end)
+test('With os_admin running, txAdmin admins get group.admin only while on staff duty',function()
+    local c=fixture();c.states.os_admin='started'
+    local function step(fn) local mark=#c.threads;fn();for i=mark+1,#c.threads do coroutine.resume(c.threads[i]) end end
+    step(function() c.auth(2) end);assert(#c.executed==0) -- admin de txAdmin, fuera de servicio
+    c.origin='os_admin';assert(c.exports.IsTxAdmin(2)==true and c.exports.IsTxAdmin(3)==false)
+    c.origin='untrusted';assert(c.exports.IsTxAdmin(2)==false) -- solo os_admin puede preguntarlo
+    step(function() c.event('os_admin:staffDuty','untrusted',2,true) end);assert(#c.executed==0) -- solo os_admin lo avisa
+    step(function() c.event('os_admin:staffDuty','os_admin',2,true) end);assert(c.executed[1]=='add_principal player.2 group.admin')
+    step(function() c.event('os_admin:staffDuty','os_admin',2,false) end);assert(c.executed[2]=='remove_principal player.2 group.admin')
 end)
 test('Only approved resource consumers can query their own verified scopes',function()
     local c=fixture();c.auth(2);c.command('osautorizar',0,{'2','security_admin','10','CONFIRMAR'})

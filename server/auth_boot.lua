@@ -30,7 +30,8 @@ local function txGroup(source,on)
     if type(group)~='string' or not group:match('^group%.[%w_]+$') then return end
     if on and not txGranted[source] then
         txGranted[source]=true
-        ExecuteCommand(('add_principal player.%d %s'):format(source,group))
+        -- Fuera del comando que lo provoca (/adminservicio): dentro, FiveM usaria los permisos del jugador y lo ignoraria.
+        CreateThread(function() ExecuteCommand(('add_principal player.%d %s'):format(source,group)) end)
         -- Los mensajes van fuera del comando que lo provoca (/adminservicio): si no, FiveM los muestra en el chat
         -- de quien lo usa. Sin el ACE del recurso para add_principal, FiveM ignora el comando: se avisa en consola.
         CreateThread(function()
@@ -44,7 +45,7 @@ local function txGroup(source,on)
         end)
     elseif not on and txGranted[source] then
         txGranted[source]=nil
-        ExecuteCommand(('remove_principal player.%d %s'):format(source,group))
+        CreateThread(function() ExecuteCommand(('remove_principal player.%d %s'):format(source,group)) end)
         CreateThread(function() print(('[OSCAR AUTH] action=txadmin_group_removed source=%d group=%s'):format(source,group)) end)
     end
 end

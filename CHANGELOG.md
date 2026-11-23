@@ -1,5 +1,10 @@
 # Changelog
 
+## Sin publicar
+
+- **Arreglado**: el grupo de txAdmin al entrar de servicio no se aplicaba (orden lanzada dentro del comando del
+  jugador); ahora se ejecuta en un hilo aparte. Test del servicio de staff con txAdmin.
+
 ## 0.1.12 — Avisos de txAdmin solo en la consola
 
 - Los avisos `[OSCAR AUTH]` de dar o quitar el grupo de txAdmin ya no salen en el chat de quien usa `/adminservicio`:
