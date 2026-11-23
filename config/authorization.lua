@@ -10,6 +10,8 @@ OSDevtools.AuthorizationConfig = {
     -- Al reiniciar os_devtools se retiran (un ID de jugador se reutiliza); el admin debe reconectar o volver a
     -- autenticarse en txAdmin para recuperarlo.
     TxAdminGroup = 'group.admin',
+    -- Con os_admin arrancado, el grupo de los admins de txAdmin solo se da de servicio (/adminservicio de os_admin).
+    TxAdminRequiresDuty = true, DutyResource = 'os_admin',
     Permissions = {
         ['osdev.admin'] = {}, ['osdev.economy'] = { parent = 'osdev.admin' },
         ['osdev.jobs'] = { parent = 'osdev.admin' }, ['osdev.assets'] = { parent = 'osdev.admin' },

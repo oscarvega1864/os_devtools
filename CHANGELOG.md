@@ -1,5 +1,10 @@
 # Changelog
 
+## Sin publicar
+
+- El grupo `group.admin` de los admins de txAdmin solo se da **de servicio** (`/adminservicio` de os_admin) mientras
+  os_admin esté arrancado (`TxAdminRequiresDuty`). Export `IsTxAdmin` (solo para os_admin).
+
 ## 0.1.10 — Datos para el menú de inicio de os_hud
 
 - `GetCharacterStats` da más datos para el menú de inicio de os_hud: posición de propiedades y negocios, modelo, tipo

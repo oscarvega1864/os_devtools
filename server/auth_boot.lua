@@ -45,13 +45,28 @@ local function txGroup(source,on)
         print(('[OSCAR AUTH] action=txadmin_group_removed source=%d group=%s'):format(source,group))
     end
 end
+-- txAdmins: quien txAdmin dice que es admin. staffDuty: quien esta de servicio como staff (lo avisa os_admin).
+-- El grupo solo se da si es admin de txAdmin y, con servicio obligatorio, esta de servicio.
+local txAdmins,staffDuty={},{}
+local function dutyRequired() return config.TxAdminRequiresDuty==true and GetResourceState(config.DutyResource or 'os_admin')=='started' end
+local function refreshTx(source) txGroup(source,txAdmins[source]==true and (not dutyRequired() or staffDuty[source]==true)) end
 local function txGroupsClear() for source in pairs(txGranted) do txGroup(source,false) end end
 AddEventHandler('txAdmin:events:adminAuth',function(event)
     local origin=GetInvokingResource()
     hub.txEvent(origin,event)
     if origin~=config.TxResource or not txReady() or type(event)~='table' or type(event.isAdmin)~='boolean' or math.type(event.netid)~='integer' then return end
-    if event.netid==-1 then if not event.isAdmin then txGroupsClear() end return end
-    if event.netid>0 and GetPlayerName(event.netid) then txGroup(event.netid,event.isAdmin) end
+    if event.netid==-1 then if not event.isAdmin then txAdmins={};txGroupsClear() end return end
+    if event.netid>0 and GetPlayerName(event.netid) then txAdmins[event.netid]=event.isAdmin or nil;refreshTx(event.netid) end
+end)
+-- Servicio de staff (evento de servidor de os_admin; un cliente no puede lanzarlo).
+AddEventHandler('os_admin:staffDuty',function(player,on)
+    if GetInvokingResource()~=(config.DutyResource or 'os_admin') or math.type(player)~='integer' then return end
+    staffDuty[player]=on==true or nil;refreshTx(player)
+end)
+-- Para /adminservicio de os_admin: un admin de txAdmin que no es del staff tambien puede ponerse de servicio.
+exports('IsTxAdmin',function(player)
+    if GetInvokingResource()~=(config.DutyResource or 'os_admin') then return false end
+    return txAdmins[tonumber(player)]==true
 end)
 -- Cambio en la lista de admins de txAdmin: se retiran los grupos dados; txAdmin vuelve a autenticar a los que sigan.
 AddEventHandler('txAdmin:events:adminsUpdated',function()
@@ -61,6 +76,7 @@ AddEventHandler('txAdmin:events:adminsUpdated',function()
 end)
 AddEventHandler('playerDropped',function()
     local player=tonumber(source);hub.drop(player);txGroup(player,false);lastDenial[player],lastDiagnostic[player]=nil,nil
+    txAdmins[player],staffDuty[player]=nil,nil
 end)
 AddEventHandler('onResourceStop',function(resource)
     hub.resourceStopped(resource)
@@ -68,6 +84,8 @@ AddEventHandler('onResourceStop',function(resource)
 end)
 AddEventHandler('onResourceStart',function(resource)
     if resource==config.TxResource then hub.reset('monitor_started') end
+    -- os_admin vuelve: todos fuera de servicio, se recalcula el grupo de los admins de txAdmin.
+    if resource==(config.DutyResource or 'os_admin') then staffDuty={};for player in pairs(txAdmins) do refreshTx(player) end end
 end)
 local function reply(source,message)
     if source==0 then print('[OSCAR AUTH] '..message) else TriggerClientEvent('osdev:msg',source,message) end
