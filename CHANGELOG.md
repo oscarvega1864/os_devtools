@@ -1,6 +1,6 @@
 # Changelog
 
-## Sin publicar
+## 0.1.11 — Admins de txAdmin solo de servicio
 
 - El grupo `group.admin` de los admins de txAdmin solo se da **de servicio** (`/adminservicio` de os_admin) mientras
   os_admin esté arrancado (`TxAdminRequiresDuty`). Export `IsTxAdmin` (solo para os_admin).

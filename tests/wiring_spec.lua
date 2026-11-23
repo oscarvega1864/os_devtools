@@ -101,7 +101,7 @@ end
 test('All Lua syntax and actual manifest paths load while preserving pretest position commands',function()
     for _,file in ipairs(__files) do assert(loadfile('/repo/'..file),file) end
     local environment={fx_version=function(v) assert(v=='cerulean') end,game=function(v) assert(v=='gta5') end,lua54=function() end,author=function() end,description=function() end,
-        version=function(v) assert(v=='0.1.10') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
+        version=function(v) assert(v=='0.1.11') end,server_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
         shared_script=function(file) assert(loadfile('/repo/'..file)) end,shared_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,
         client_scripts=function(files) for _,file in ipairs(files) do assert(loadfile('/repo/'..file)) end end,ui_page=function() end,files=function() end}
     assert(loadfile('/repo/fxmanifest.lua','t',environment))()
