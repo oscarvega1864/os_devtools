@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.9 — Armarios, conjuntos y vista previa del concesionario
+
+- **Armarios en propiedades**: `/armario <idPropiedad>` pone un armario donde estás (`/armario borrar` quita el
+  cercano). Junto a él, E abre el diseñador solo con la ropa (si tienes la llave de la propiedad). Se pueden guardar
+  hasta 10 **conjuntos** por personaje y ponérselos después; Cancelar deja la ropa con la que se entró.
+- Más prendas en el diseñador: máscara, mochila, collar/corbata, reloj y pulsera.
+- **Concesionario**: la vista previa es fija y el jugador mueve la cámara arrastrando para verla.
+- **Arreglado**: un vehículo creado con `/crearvehiculo` sin dueño da la llave a quien lo crea (aviones incluidos);
+  `/setcar livery` acepta solo índices enteros.
+- **Datos más seguros**: armarios, conjuntos y puntos de trabajo se guardan con copia `.bak` y comprobación; un
+  archivo dañado no borra los datos. Guardar o borrar conjuntos tiene un límite de frecuencia.
+
 ## 0.1.8 — Trabajos, concesionarios, llaves, menú de negocio y /setcar
 
 - **`/setcar`**: `reparar [id|matrícula]` (también a distancia: lo repara quien tiene el coche cargado o, si nadie,
