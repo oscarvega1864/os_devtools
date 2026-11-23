@@ -1,5 +1,11 @@
 # Changelog
 
+## Sin publicar
+
+- `GetCharacterStats` da más datos para el menú de inicio de os_hud: posición de propiedades y negocios, modelo, tipo
+  y posición real de los vehículos en la calle, plantilla de los negocios, información del trabajo público (rangos,
+  sueldo, puntos de servicio) y la lista de trabajos públicos. Nuevo export `GetDealerList` (concesionarios).
+
 ## 0.1.9 — Armarios, conjuntos y vista previa del concesionario
 
 - **Armarios en propiedades**: `/armario <idPropiedad>` pone un armario donde estás (`/armario borrar` quita el

@@ -1139,8 +1139,20 @@ exports('GetCharacterStats',function(src)
   if not statsReader() then return nil,'resource_not_authorized' end
   local alias=characterFor(src);local c=alias and state.characters[alias]
   if not c then return nil,'no_character' end
+  -- Punto (x, y, z) redondeado para el GPS del menu de inicio; sin bucket ni rumbo.
+  local function spot(p) return type(p)=='table' and tonumber(p.x) and {x=math.floor(p.x*10+0.5)/10,y=math.floor(p.y*10+0.5)/10,z=math.floor((tonumber(p.z) or 0)*10+0.5)/10} or nil end
   local function entry(category,id,record,extra)
-    local item={id=tonumber(id),label=assetLabel(category,id,record),owner=record.owner,plate=record.plate,type=record.type}
+    local item={id=tonumber(id),label=assetLabel(category,id,record),owner=record.owner,plate=record.plate,type=record.type,
+      price=tonumber(record.price),position=spot(record.position)}
+    if category=='vehicles' then
+      item.model,item.vtype,item.fixed=record.model,record.vtype,record.fixed==true
+      -- En la calle: posicion real de su entidad (si esta generada).
+      local entity=vehicles and vehicles.find(tonumber(id),record)
+      if entity and DoesEntityExist(entity) then item.out=true;item.position=spot(GetEntityCoords(entity)) end
+    elseif category=='businesses' then
+      local count=0;for _ in pairs(record.staff or {}) do count=count+1 end
+      item.staffCount,item.job,item.dutyPoint=count,record.job,spot(record.dutyPoint)
+    end
     for k,v in pairs(extra or {}) do item[k]=v end
     return item
   end
@@ -1172,6 +1184,22 @@ exports('GetCharacterStats',function(src)
   for _,key in ipairs({'vehicles','vehiclesLent','businesses','businessesStaff','properties','propertiesLent'}) do
     table.sort(result[key],function(a,b) return a.id<b.id end)
   end
+  -- Trabajo publico: nombre, escala de rangos, sueldo y puntos de servicio (menu de inicio de os_hud).
+  local job=c.job and OSDevtools.PublicJobs and OSDevtools.PublicJobs[c.job]
+  if job then
+    local index=1;for i,r in ipairs(job.ranks) do if r==c.rank then index=i end end
+    local points={};for _,p in ipairs(OSDevtools.JobPoints and OSDevtools.JobPoints(c.job) or job.duty or {}) do points[#points+1]={label=p.label or job.label,x=p.x,y=p.y,z=p.z} end
+    result.jobInfo={label=job.label,ranks=job.ranks,rankIndex=index,salary=job.salaries and job.salaries[index] or 0,boss=index>=(job.boss or 99),points=points,
+      payMinutes=OSDevtools.CoreConfig.Business and OSDevtools.CoreConfig.Business.PayMinutes or nil}
+  end
+  -- Trabajos publicos que existen (para quien no tiene ninguno).
+  result.publicJobs={}
+  for name,j in pairs(OSDevtools.PublicJobs or {}) do
+    local min,max;for _,v in ipairs(j.salaries or {}) do min=math.min(min or v,v);max=math.max(max or v,v) end
+    local first=(OSDevtools.JobPoints and OSDevtools.JobPoints(name) or j.duty or {})[1]
+    result.publicJobs[#result.publicJobs+1]={name=name,label=j.label,min=min or 0,max=max or 0,point=first and {label=first.label or j.label,x=first.x,y=first.y,z=first.z} or nil}
+  end
+  table.sort(result.publicJobs,function(a,b) return a.label<b.label end)
   return result
 end)
 exports('HasAssetAccess',function(src,category,id)
@@ -1265,7 +1293,25 @@ end)
 -- Valores de serie en config; lo que cambian los administradores en /concesionarios (precios, modelos, puntos) se guarda
 -- en data/dealerships.json por concesionario y manda sobre el config.
 local dealerOverrides=(function() local raw=LoadResourceFile(RESOURCE,'data/dealerships.json');local ok,data=pcall(json.decode,raw or '{}');return ok and type(data)=='table' and data or {} end)()
-local function dealer(id)
+local dealer
+-- Concesionarios para el menu de inicio (os_hud): nombre, mostrador, numero de modelos y rango de precios.
+exports('GetDealerList',function()
+  if not statsReader() then return nil end
+  local list={}
+  for id in pairs(OSDevtools.Dealerships or {}) do
+    local d=dealer(id)
+    if d then
+      local min,max,cheap=nil,nil,{}
+      for _,e in ipairs(d.catalog or {}) do min=math.min(min or e.price,e.price);max=math.max(max or e.price,e.price);cheap[#cheap+1]={label=e.label,price=e.price} end
+      table.sort(cheap,function(a,b) return a.price<b.price end)
+      list[#list+1]={id=id,label=d.label,order=d.order,count=#(d.catalog or {}),min=min or 0,max=max or 0,top={cheap[1],cheap[2],cheap[3]},
+        point={x=d.counter.x,y=d.counter.y,z=d.counter.z}}
+    end
+  end
+  table.sort(list,function(a,b) return a.order<b.order end)
+  return list
+end)
+function dealer(id)
   local base=OSDevtools.Dealerships[id];if not base then return nil end
   local o=dealerOverrides[id] or {}
   return {id=id,label=base.label,blip=base.blip,distance=base.distance,order=base.order or 99,colors=base.colors,
