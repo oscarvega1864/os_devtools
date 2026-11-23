@@ -10,6 +10,14 @@ function util.copy(value)
 end
 
 function util.equal(left, right)
+    -- Numeros: iguales o, si alguno es decimal, con diferencia relativa de 1e-9 (el JSON guarda 14 cifras: una
+    -- coordenada del juego puede cambiar en la cifra 15 al guardarse y no es un cambio real).
+    if type(left) == 'number' and type(right) == 'number' then
+        if left == right then return true end
+        if math.type(left) == 'integer' and math.type(right) == 'integer' then return false end
+        if left ~= left or right ~= right or left == math.huge or left == -math.huge or right == math.huge or right == -math.huge then return false end
+        return math.abs(left - right) <= 1e-9 * math.max(math.abs(left), math.abs(right))
+    end
     if type(left) ~= type(right) then return false end
     if type(left) ~= 'table' then return left == right end
     for key, item in pairs(left) do

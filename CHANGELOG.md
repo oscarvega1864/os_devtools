@@ -7,6 +7,13 @@
   incluye la apariencia de los personajes propios. Escena configurable en `SelectScene` (`config/spawn.lua`).
 - **Nuevo estilo del selector**: tarjetas de embarque (asiento, ocupación, último destino y vuelo, saldo y sellos de
   último viaje, herido o de servicio) y rótulo con el nombre junto al personaje, a juego con la pantalla de carga.
+- **Borrar lo creado por comando**: `/borrarvehiculo [id|matrícula] confirmar` (sin nada, el vehículo en el que estás;
+  uno sin registrar se borra sin más), `/borrarpropiedad <id> confirmar` (y sus armarios), `/borrarnegocio <id>
+  confirmar` (también facciones: la plantilla pierde ese trabajo si no lo tiene por otro negocio y sus vehículos dejan de
+  ser de flota) y `/puntotrabajo borrar` (el punto añadido más cercano). Sin "confirmar" solo avisan de lo que se borra.
+  El registro solo deja desaparecer un bien si el cambio es el borrado explícito de ese bien (operación de auditoría
+  `delete <tipo> <id>`); los personajes siguen sin poder borrarse.
+- La comprobación de integridad del guardado tolera la variación de los decimales al pasar a JSON.
 - **Arreglado**: el grupo de txAdmin al entrar de servicio no se aplicaba (orden lanzada dentro del comando del
   jugador); ahora se ejecuta en un hilo aparte. Test del servicio de staff con txAdmin.
 

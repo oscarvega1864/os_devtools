@@ -227,3 +227,32 @@ dofile('/repo/tests/spawn_client_spec.lua')
 dofile('/repo/tests/character_select_spec.lua')
 DevtoolsTest=nil
 print(('Wiring/core tests: %d | Passed: %d | Failed: %d'):format(total,total-failures,failures));__failures=failures
+test('Storage integrity tolerates float drift from JSON (15th digit) but not real changes',function()
+    local eq=OSDevtools.Util.equal
+    assert(eq({x=123.456787109375,y=-1.5},{x=123.45678710938,y=-1.5})) -- coordenada float32 guardada con 14 cifras
+    assert(not eq({x=123.4567},{x=123.4568}) and not eq(1,2) and not eq({a=1},{a=1,b=2}))
+    assert(eq(5,5.0) and not eq(0/0,0/0) and not eq('5',5))
+end)
+test('Admins delete properties, businesses and vehicles created by command only after confirming',function()
+    local c=fixture()
+    c.command('crearpropiedad',1,{'200','50000'});c.command('crearnegocio',1,{'ltd','shop','30'})
+    local d=c.snapshot();assert(d.properties['200'] and d.businesses['1'])
+    c.command('borrarpropiedad',1,{'200'});assert(c.snapshot().properties['200']) -- sin confirmar: solo avisa
+    c.command('borrarpropiedad',2,{'200','confirmar'});assert(c.snapshot().properties['200']) -- sin permiso
+    c.command('borrarpropiedad',1,{'200','confirmar'});assert(c.snapshot().properties['200']==nil,c.text(1))
+    c.command('borrarnegocio',1,{'1'});assert(c.snapshot().businesses['1'])
+    c.command('borrarnegocio',1,{'1','confirmar'});assert(c.snapshot().businesses['1']==nil)
+end)
+test('Storage only lets an asset disappear when the change is the explicit delete of that same asset',function()
+    local S=OSDevtools.State
+    local function snap(revision,vehicles,operation)
+        return {revision=revision,nextCharacter=1,nextVehicle=10,nextBusiness=1,characters={},vehicles=vehicles,businesses={},properties={},
+            audit={operation and {time=1,actor='console',operation=operation} or nil}}
+    end
+    local before=snap(1,{['5']={id=5},['6']={id=6}})
+    assert(not S.successor(before,snap(2,{['6']={id=6}},'setcar reparar 5'))) -- otra operacion: no
+    assert(not S.successor(before,snap(2,{['6']={id=6}},'delete vehicle 6'))) -- borra otro distinto: no
+    assert(not S.successor(before,snap(2,{},'delete vehicle 5'))) -- dos a la vez: no
+    assert(not S.successor(before,snap(2,{['6']={id=6}},'delete property 5'))) -- otra categoria: no
+    assert(S.successor(before,snap(2,{['6']={id=6}},'delete vehicle 5'))) -- el borrado explicito de ese: si
+end)

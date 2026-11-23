@@ -644,6 +644,34 @@ function setcar.reparar(src,args)
   out(src,'Vehiculo '..(id and ('#'..id) or plateText(entity))..' reparado.','success')
   panelLog(src,'setcar reparar',id and tostring(id) or plateText(entity))
 end
+-- /borrarvehiculo [id|matricula] confirmar: quita del registro un vehiculo creado con /crearvehiculo (y su entidad).
+-- Sin "confirmar" solo dice cual es. Sin ID ni matricula, el vehiculo en el que estas. Uno que no esta registrado
+-- (trafico, vMenu) se borra sin mas.
+RegisterCommand('borrarvehiculo',function(src,args)
+  if not needAdmin(src,'osdev.assets.vehicles') then return end
+  local value,confirm=args[1],args[2]
+  if value and value:lower()=='confirmar' then value,confirm=nil,value end
+  if src==0 and not value then return out(src,'Uso: borrarvehiculo <id|matricula> confirmar') end
+  local entity,err,id,record=setcarTarget(src,value)
+  if err then return out(src,err,'error') end
+  if entity and not id then
+    local bag=Entity(entity).state.osdev
+    id=type(bag)=='table' and positive(bag.id) or nil;record=id and state.vehicles[tostring(id)] or nil
+  end
+  if not id or not record then
+    if entity and DoesEntityExist(entity) then DeleteEntity(entity);return out(src,'Vehiculo sin registrar borrado.','success') end
+    return out(src,'Vehiculo no encontrado.','error')
+  end
+  local label=('#%d %s (%s), de %s'):format(id,record.model,record.plate or 'sin matricula',record.owner or 'nadie')
+  if not confirm or confirm:lower()~='confirmar' then
+    return out(src,('Vas a borrar el vehiculo %s. Sus llaves dejan de servir y no se puede deshacer. Repite con: /borrarvehiculo %d confirmar'):format(label,id),'warning')
+  end
+  if not action(src,'delete vehicle '..id,function(d) if not d.vehicles[tostring(id)] then return false,'Ya no existe.' end;d.vehicles[tostring(id)]=nil;return true end) then return end
+  vehicles.delete(id)
+  if entity and DoesEntityExist(entity) then DeleteEntity(entity) end
+  out(src,'Vehiculo '..label..' borrado del registro.','success')
+  panelLog(src,'borrarvehiculo',tostring(id),label)
+end,false)
 function setcar.gas(src,args)
   if not staffAce(src,'osadmin.vehicles.fuel') then return out(src,'No tienes permiso.','error') end
   local amount=integer(args[2]);if not amount or amount<0 or amount>100 then return out(src,'Uso: /setcar gas <0-100> [id|matricula]') end
@@ -1562,8 +1590,26 @@ end)
 -- Admin: otro punto de servicio para un trabajo publico en tu posicion (data/job_points.json).
 RegisterCommand('puntotrabajo',function(src,args)
   if not needAdmin(src,'osdev.jobs') then return end
+  -- /puntotrabajo borrar: quita el punto anadido mas cercano (a 5 m). Los de config/jobs.lua no se borran asi.
+  if args[1] and args[1]:lower()=='borrar' then
+    local pos=getCoords(src);if not pos then return end
+    local bestJob,bestIndex,bestDistance
+    for name,list in pairs(extraPoints) do
+      for index,p in ipairs(list) do
+        local d=math.sqrt((p.x-pos.x)^2+(p.y-pos.y)^2+(p.z-pos.z)^2)
+        if d<=5.0 and (not bestDistance or d<bestDistance) then bestJob,bestIndex,bestDistance=name,index,d end
+      end
+    end
+    if not bestJob then return out(src,'No hay ningun punto de servicio anadido a menos de 5 m (los de serie se cambian en config/jobs.lua).','warning') end
+    local removed=table.remove(extraPoints[bestJob],bestIndex)
+    if #extraPoints[bestJob]==0 then extraPoints[bestJob]=nil end
+    if not sideSave('job_points.json',extraPoints) then return out(src,'No se pudo guardar el cambio.','error') end
+    out(src,('Punto de servicio "%s" de %s borrado.'):format(removed.label or bestJob,(OSDevtools.PublicJobs[bestJob] or {}).label or bestJob),'success')
+    for _,p in ipairs(GetPlayers()) do if OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(tonumber(p)) end end
+    return
+  end
   local jobName=args[1] and args[1]:lower();local job=jobName and OSDevtools.PublicJobs[jobName]
-  if not job then local names={};for n in pairs(OSDevtools.PublicJobs) do names[#names+1]=n end;table.sort(names);return out(src,'Uso: /puntotrabajo <'..table.concat(names,'|')..'> [nombre]') end
+  if not job then local names={};for n in pairs(OSDevtools.PublicJobs) do names[#names+1]=n end;table.sort(names);return out(src,'Uso: /puntotrabajo <'..table.concat(names,'|')..'> [nombre]  |  /puntotrabajo borrar (el cercano)') end
   local pos=getCoords(src);if not pos then return end
   extraPoints[jobName]=extraPoints[jobName] or {}
   local label=table.concat(args,' ',2);if label=='' then label=job.label end
@@ -1669,3 +1715,68 @@ RegisterNetEvent('osdev:outfits:delete',function(index)
   sendOutfits(src,alias)
   out(src,('Conjunto "%s" borrado.'):format(name),'info')
 end)
+
+-- Borrar bienes creados por comando ------------------------------------------------------------------------------
+-- /borrarpropiedad <id> confirmar y /borrarnegocio <id> confirmar (tambien facciones). Sin "confirmar" solo dicen que
+-- se va a borrar. Las llaves dejan de servir (el bien ya no existe). Al borrar una propiedad se quitan sus armarios;
+-- al borrar un negocio, quien trabajaba en el pierde ese trabajo (si no lo tiene por otro negocio) y sus vehiculos de
+-- flota dejan de serlo. (/borrarvehiculo esta junto a /setcar.)
+local function confirmDelete(src,args,usage)
+  local id=positive(args[1])
+  if not id then out(src,usage);return nil end
+  return id,(args[2] or ''):lower()=='confirmar'
+end
+RegisterCommand('borrarpropiedad',function(src,args)
+  if not needAdmin(src,'osdev.assets.properties') then return end
+  local id,confirmed=confirmDelete(src,args,'Uso: /borrarpropiedad <id> confirmar');if not id then return end
+  local record=state.properties[tostring(id)]
+  if not record then return out(src,'No existe la propiedad #'..id..'.','error') end
+  local label=('%s, de %s'):format(assetLabel('properties',id,record),ownerLabel(record.owner))
+  local closets={};for wid,w in pairs(wardrobes) do if tonumber(w.property)==id then closets[#closets+1]=wid end end
+  if not confirmed then
+    return out(src,('Vas a borrar la %s%s. Sus llaves dejan de servir y no se puede deshacer. Repite con: /borrarpropiedad %d confirmar'):format(
+      label,#closets>0 and (' y sus %d armarios'):format(#closets) or '',id),'warning')
+  end
+  if not action(src,'delete property '..id,function(d)
+    if not d.properties[tostring(id)] then return false,'Ya no existe.' end
+    d.properties[tostring(id)]=nil;return true
+  end) then return end
+  if #closets>0 then for _,wid in ipairs(closets) do wardrobes[wid]=nil end;saveWardrobes();pushWardrobes() end
+  pushBlips()
+  out(src,'Borrada la '..label..'.','success')
+  panelLog(src,'borrarpropiedad',tostring(id),label)
+end,false)
+RegisterCommand('borrarnegocio',function(src,args)
+  local id,confirmed=positive(args[1]),(args[2] or ''):lower()=='confirmar'
+  local record=id and state.businesses[tostring(id)]
+  if not needAdmin(src,record and record.type=='faccion' and 'osdev.assets.factions' or 'osdev.assets.businesses') then return end
+  if not id then return out(src,'Uso: /borrarnegocio <id> confirmar (tambien facciones)') end
+  if not record then return out(src,'No existe el negocio #'..id..'.','error') end
+  local label=('%s, de %s'):format(assetLabel('businesses',id,record),ownerLabel(record.owner))
+  local staffCount=0;for _ in pairs(record.staff or {}) do staffCount=staffCount+1 end
+  if not confirmed then
+    return out(src,('Vas a borrar %s (plantilla: %d). Sus llaves dejan de servir, la plantilla pierde este trabajo y no se puede deshacer. Repite con: /borrarnegocio %d confirmar'):format(
+      label,staffCount,id),'warning')
+  end
+  if not action(src,'delete business '..id,function(d)
+    local b=d.businesses[tostring(id)];if not b then return false,'Ya no existe.' end
+    d.businesses[tostring(id)]=nil
+    -- Trabajo: se quita a quien lo tenia por este negocio, salvo que lo tenga tambien por otro.
+    if b.job then
+      local keep={}
+      for _,other in pairs(d.businesses) do
+        if other.job==b.job then if other.owner then keep[other.owner]=true end;for who in pairs(other.staff or {}) do keep[who]=true end end
+      end
+      local people={};if b.owner then people[b.owner]=true end;for who in pairs(b.staff or {}) do people[who]=true end
+      for who in pairs(people) do
+        local c=d.characters[who]
+        if c and c.job==b.job and not keep[who] and not (OSDevtools.PublicJobs and OSDevtools.PublicJobs[b.job]) then c.job=nil;c.rank=nil;c.duty=false end
+      end
+    end
+    for _,v in pairs(d.vehicles) do if v.fleet==id then v.fleet=nil end end
+    return true
+  end) then return end
+  pushBlips()
+  out(src,'Borrado '..label..'.','success')
+  panelLog(src,'borrarnegocio',tostring(id),label)
+end,false)

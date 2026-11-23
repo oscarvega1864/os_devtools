@@ -221,8 +221,17 @@ function domain.successor(before,after)
     for alias,c in pairs(before.characters) do
         if not after.characters[alias] or after.characters[alias].id ~= c.id then return nil,'No se puede borrar o renumerar un personaje.' end
     end
+    -- Un bien solo puede desaparecer con un borrado explicito de administracion (/borrarvehiculo, /borrarpropiedad,
+    -- /borrarnegocio): la ultima operacion de la auditoria del cambio es "delete <tipo> <id>" y solo vale para ese bien.
+    local last=after.audit and after.audit[#after.audit]
+    local kind,deleted
+    if type(last)=='table' and type(last.operation)=='string' then kind,deleted=last.operation:match('^delete (%a+) (%d+)$') end
+    local allowed=({vehicle='vehicles',property='properties',business='businesses'})[kind or '']
     for _,category in ipairs({'vehicles','businesses','properties'}) do
-        for id,record in pairs(before[category]) do if not after[category][id] or after[category][id].id~=record.id then return nil,'No se pueden borrar o renumerar bienes.' end end
+        for id,record in pairs(before[category]) do
+            local gone=not after[category][id]
+            if (gone and not (category==allowed and id==deleted)) or (not gone and after[category][id].id~=record.id) then return nil,'No se pueden borrar o renumerar bienes.' end
+        end
     end
     return true
 end
