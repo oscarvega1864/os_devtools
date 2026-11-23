@@ -1393,7 +1393,36 @@ end)
 -- Trabajos publicos (config/jobs.lua) -------------------------------------------------------------------------------
 -- Policia, sheriff, FIB, bomberos y EMS no son negocios: rangos fijos, sueldo del ayuntamiento por hora de servicio y
 -- puntos de servicio en sus sedes. Los mandos (rango >= boss) gestionan la plantilla con /trabajo.
-local extraPoints=(function() local raw=LoadResourceFile(RESOURCE,'data/job_points.json');local ok,data=pcall(json.decode,raw or '{}');return ok and type(data)=='table' and data or {} end)()
+-- Archivos sueltos de data/ (puntos de trabajo, armarios, conjuntos). Antes de escribir se guarda una copia
+-- (.bak) del ultimo contenido valido y despues se relee para confirmar. Si el archivo esta danado al arrancar se
+-- usa la copia; si tampoco sirve, ese archivo NO se vuelve a escribir (no se pisan los datos) hasta revisarlo.
+local sideBlocked={}
+local function sideDecode(raw) if raw==nil then return nil end;local ok,data=pcall(json.decode,raw);return ok and type(data)=='table' and data or false end
+local function sideLoad(file)
+  local path='data/'..file
+  local data=sideDecode(LoadResourceFile(RESOURCE,path))
+  if data then return data end
+  if data==nil then -- no existe: se empieza vacio
+    local backup=sideDecode(LoadResourceFile(RESOURCE,path..'.bak'))
+    return backup or {}
+  end
+  local backup=sideDecode(LoadResourceFile(RESOURCE,path..'.bak'))
+  if backup then print(('^3[os_devtools] %s estaba danado: se usa la copia %s.bak.^7'):format(path,path));return backup end
+  sideBlocked[file]=true
+  print(('^1[os_devtools] %s esta danado y no hay copia valida: no se guardaran cambios en el hasta revisarlo.^7'):format(path))
+  return {}
+end
+local function sideSave(file,data)
+  local path='data/'..file
+  if sideBlocked[file] then print(('^1[os_devtools] %s bloqueado (archivo danado): cambio no guardado.^7'):format(path));return false end
+  local encoded=json.encode(data)
+  local previous=LoadResourceFile(RESOURCE,path)
+  if previous and sideDecode(previous) then SaveResourceFile(RESOURCE,path..'.bak',previous,-1) end
+  SaveResourceFile(RESOURCE,path,encoded,-1)
+  if LoadResourceFile(RESOURCE,path)~=encoded then print(('^1[os_devtools] No se pudo confirmar la escritura de %s.^7'):format(path));return false end
+  return true
+end
+local extraPoints=sideLoad('job_points.json')
 function OSDevtools.JobPoints(job)
   local list={}
   for _,p in ipairs((OSDevtools.PublicJobs[job] or {}).duty or {}) do list[#list+1]=p end
@@ -1493,7 +1522,7 @@ RegisterCommand('puntotrabajo',function(src,args)
   extraPoints[jobName]=extraPoints[jobName] or {}
   local label=table.concat(args,' ',2);if label=='' then label=job.label end
   extraPoints[jobName][#extraPoints[jobName]+1]={x=pos.x,y=pos.y,z=pos.z,label=label:sub(1,40)}
-  SaveResourceFile(RESOURCE,'data/job_points.json',json.encode(extraPoints),-1)
+  sideSave('job_points.json',extraPoints)
   out(src,'Punto de servicio de '..job.label..' anadido aqui.','success')
   for _,p in ipairs(GetPlayers()) do if OSDevtools.PushDutyPoints then OSDevtools.PushDutyPoints(tonumber(p)) end end
 end,false)
@@ -1504,10 +1533,13 @@ AddEventHandler('playerDropped',function() OSDevtools.JobView[source]=nil;OSDevt
 -- a uno, E abre el armario si llevas la llave de esa propiedad (o tienes osdev.assets.properties). En el armario se
 -- cambia la ropa (disenador en modo ropa) y se guardan conjuntos por personaje (hasta MAX_OUTFITS).
 local MAX_OUTFITS, MAX_WARDROBES, WARDROBE_REACH = 10, 200, 3.0
-local function loadJson(file) local ok,data=pcall(json.decode,LoadResourceFile(RESOURCE,'data/'..file) or '{}');return ok and type(data)=='table' and data or {} end
-local wardrobes, outfits = loadJson('wardrobes.json'), loadJson('outfits.json') -- id -> punto; alias -> lista
-local function saveWardrobes() SaveResourceFile(RESOURCE,'data/wardrobes.json',json.encode(wardrobes),-1) end
-local function saveOutfits() SaveResourceFile(RESOURCE,'data/outfits.json',json.encode(outfits),-1) end
+local wardrobes, outfits = sideLoad('wardrobes.json'), sideLoad('outfits.json') -- id -> punto; alias -> lista
+local function saveWardrobes() return sideSave('wardrobes.json',wardrobes) end
+local function saveOutfits() return sideSave('outfits.json',outfits) end
+-- Guardar / borrar conjuntos escribe a disco: como mucho uno por segundo y jugador.
+local outfitAt={}
+local function outfitThrottled(src) local now=GetGameTimer();if outfitAt[src] and now-outfitAt[src]<1000 then return true end;outfitAt[src]=now;return false end
+AddEventHandler('playerDropped',function() outfitAt[source]=nil end)
 local function wardrobeList()
   local list={};for id,w in pairs(wardrobes) do list[#list+1]={id=id,x=w.x,y=w.y,z=w.z,bucket=w.bucket} end
   table.sort(list,function(a,b) return a.id<b.id end);return list
@@ -1565,6 +1597,7 @@ RegisterNetEvent('osdev:wardrobe:use',function(id)
 end)
 RegisterNetEvent('osdev:outfits:save',function(data)
   local src=source;local alias=characterFor(src);if not alias or type(data)~='table' then return end
+  if outfitThrottled(src) then return out(src,'Espera un momento antes de guardar otro conjunto.','warning') end
   local name=type(data.name)=='string' and data.name:gsub('[%c<>]',''):gsub('^%s+',''):gsub('%s+$',''):sub(1,32) or ''
   if name=='' then return out(src,'Pon un nombre al conjunto.','warning') end
   local list=outfitsOf(alias)
@@ -1575,13 +1608,18 @@ RegisterNetEvent('osdev:outfits:save',function(data)
     if #list>=MAX_OUTFITS then return out(src,('Ya tienes %d conjuntos: borra alguno.'):format(MAX_OUTFITS),'warning') end
     list[#list+1]=outfit
   end
-  outfits[alias]=list;saveOutfits();sendOutfits(src,alias)
+  outfits[alias]=list
+  if not saveOutfits() then return out(src,'No se pudo guardar el conjunto. Avisa a un administrador.','error') end
+  sendOutfits(src,alias)
   out(src,(replaced and 'Conjunto "%s" actualizado.' or 'Conjunto "%s" guardado.'):format(name),'success')
 end)
 RegisterNetEvent('osdev:outfits:delete',function(index)
   local src=source;local alias=characterFor(src);index=math.tointeger(tonumber(index))
+  if not alias or outfitThrottled(src) then return end
   local list=outfitsOf(alias)
-  if not alias or not index or not list[index] then return end
-  local name=list[index].name;table.remove(list,index);outfits[alias]=list;saveOutfits();sendOutfits(src,alias)
+  if not index or not list[index] then return end
+  local name=list[index].name;table.remove(list,index);outfits[alias]=list
+  if not saveOutfits() then return out(src,'No se pudo borrar el conjunto. Avisa a un administrador.','error') end
+  sendOutfits(src,alias)
   out(src,('Conjunto "%s" borrado.'):format(name),'info')
 end)
