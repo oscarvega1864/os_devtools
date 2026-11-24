@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.14 — Sin crash por nivel de búsqueda
+
+- **Arreglado**: con la policía NPC apagada, poner nivel de búsqueda (por ejemplo desde vMenu) podía cerrar el juego
+  ("Ran out of rage::netGameEvent pool space"): el nivel se borraba cada segundo mientras el juego lo volvía a subir.
+  Ahora el máximo y el multiplicador de búsqueda quedan a 0 y un nivel existente se borra como mucho cada 5 s.
+
 ## 0.1.13 — Selector con previsualización y borrar bienes
 
 - **Selector de personaje con previsualización**: al entrar, el personaje marcado aparece de pie (ped local, solo lo ve
