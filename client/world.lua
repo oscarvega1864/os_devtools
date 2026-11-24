@@ -14,6 +14,7 @@ local function applyPolice(enabled)
     SetPoliceIgnorePlayer(player,not enabled)
     SetDispatchCopsForPlayer(player,enabled)
     SetMaxWantedLevel(enabled and 5 or 0)
+    SetWantedLevelMultiplier(enabled and 1.0 or 0.0)
     if not enabled then ClearPlayerWantedLevel(player) end
 end
 -- Peatones y trafico: los multiplicadores de densidad se aplican cada fotograma (bucle de abajo);
@@ -37,13 +38,24 @@ CreateThread(function()
     while not NetworkIsSessionStarted() do Wait(500) end
     TriggerServerEvent('osdev:requestWorldSettings')
     -- Otros scripts o la reaparicion pueden restablecer el nivel de busqueda: se mantiene cada segundo.
+    -- Con el maximo a 0 el juego ya rechaza cualquier nivel nuevo, asi que solo se borra si de verdad hay uno
+    -- (y como mucho cada 5 s): borrarlo en bucle mientras otro script lo sube satura la red con eventos
+    -- ALTER_WANTED_LEVEL y reacciones de los NPC ("Ran out of rage::netGameEvent pool space").
+    local lastClear=0
     while true do
         Wait(1000)
         if not world.npcPolice then
             local player=PlayerId()
-            if GetPlayerWantedLevel(player)>0 then ClearPlayerWantedLevel(player) end
             SetMaxWantedLevel(0)
+            SetWantedLevelMultiplier(0.0)
             SetPoliceIgnorePlayer(player,true)
+            local now=GetGameTimer()
+            if GetPlayerWantedLevel(player)>0 and now-lastClear>5000 then
+                lastClear=now
+                SetPlayerWantedLevel(player,0,false)
+                SetPlayerWantedLevelNow(player,false)
+                ClearPlayerWantedLevel(player)
+            end
         end
     end
 end)
